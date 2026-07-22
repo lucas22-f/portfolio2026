@@ -1,0 +1,56 @@
+schema: spec-driven
+
+context: |
+  Project state: blank repository; application code has not been scaffolded.
+  Planned frontend: Angular 22, standalone APIs, strict mode, zoneless change detection, Tailwind CSS, Angular Aria.
+  Planned backend: FastAPI with Pydantic, managed with Python and Poetry.
+  Planned testing: Vitest for unit tests, pytest for backend tests, Playwright for end-to-end tests.
+  Product: a public portfolio with an informational chat grounded in CV and project data.
+  Runtime MCP is excluded unless a later requirement demonstrates a concrete need.
+
+strict_tdd: false
+
+testing:
+  detected_at: 2026-07-21
+  status: unavailable
+  reason: No application manifest, test runner, test configuration, or test command is installed.
+  planned:
+    unit_frontend: Vitest
+    backend: pytest
+    e2e: Playwright
+  detected:
+    test_runner: null
+    test_command: ""
+    unit: false
+    integration: false
+    e2e: false
+    coverage: false
+    linter: false
+    type_checker: false
+    formatter: false
+
+rules:
+  proposal:
+    - Keep the first slice focused on measurable portfolio outcomes.
+    - Document product tradeoffs and non-goals.
+  specs:
+    - Use Given/When/Then for scenarios.
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY).
+  design:
+    - Preserve the frontend/backend boundary and document data contracts.
+    - Include sequence diagrams for complex flows.
+    - Record architecture decisions with rationale.
+  tasks:
+    - Group tasks by phase and use hierarchical numbering.
+    - Distinguish scaffolding, product behavior, and verification work.
+  apply:
+    - Follow existing code patterns after scaffolding establishes them.
+    - Do not add runtime MCP without an approved requirement and design rationale.
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas.
