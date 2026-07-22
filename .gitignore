@@ -1,0 +1,36 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local deployment metadata
+.vercel/
+
+# Dependency and virtual environments
+node_modules/
+.venv/
+
+# Build and test output
+dist/
+coverage/
+htmlcov/
+playwright-report/
+test-results/
+
+# Tool caches
+.angular/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors and operating systems
+.idea/
+.history/
+.DS_Store
+Thumbs.db

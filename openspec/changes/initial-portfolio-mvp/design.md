@@ -34,7 +34,7 @@ The semantic journey enhances with `IntersectionObserver`. Its terminal CTA navi
 | `frontend/src/app/{core,features,shared}/`, `frontend/src/styles.css` | Create | Routes, journey, views, typed chat, accessible theme. |
 | `backend/{app/{api,application,domain,infrastructure},Dockerfile}` | Create | API layers and portable container. |
 | `content/v1/{portfolio.json,portfolio.schema.json,reviewed-manifest.json}` | Create | Claims, factual fields, provenance. |
-| `backend/tests/`, `frontend/src/**/*.spec.ts`, `e2e/` | Create | Test layers. |
+| `backend/tests/`, `frontend/src/**/*.spec.ts`, `frontend/e2e/` | Create | Test layers. |
 
 ## Interfaces / Contracts
 
