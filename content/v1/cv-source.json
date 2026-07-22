@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "normalization": "unicode-nfc-explicit-whitespace-utf8-offsets-v1",
+  "source_id": "cv-lucas-figueroa",
+  "file_name": "CV_Lucas_Figueroa7-7.pdf",
+  "source_sha256": "479776732ca2fe9df90a753c3df55c0ac7560ebcbc1fec4a7250e8e451f56045",
+  "pages": [
+    {
+      "page": 1,
+      "normalized_text": "Lucas Figueroa Conversational AI Engineer · Backend Developer (+54) 11 6542-7871 | lucas.200061@gmail.com | linkedin.com/in/lucasfigueroa-dev | github.com/lucas22-f PERFIL PROFESIONAL Conversational AI Engineer especializado en el desarrollo de agentes inteligentes, sistemas RAG, MCP Servers y automatización empresarial utilizando Python. Experiencia desarrollando soluciones utilizadas por miles de empleados en Mercado Libre, integrando modelos de lenguaje, APIs corporativas y plataformas cloud para automatizar procesos críticos. EXPERIENCIA LABORAL Developer / Conversational AI · MercadoLibre (contractor) Junio 2025 – actualidad · Buenos Aires, Argentina (remoto) • Botmaker: Desarrollo y mantenimiento de workflows de chatbots internos sobre • Implementación de Code Actions en Node.js con integración a APIs internas de RRHH (SAP SuccessFactors) para gestión de vacaciones, liquidaciones y datos de empleados. • Procesamiento y notificación masiva a empleados usando DataFlow (plataforma interna): pipelines Python + BigQuery (GCP) para extracción y transformación de datos a escala. • Desarrollos en plataforma interna de MELI llamada Fury (infraestructura cloud interna) • Migración de flujos legacy de Botmaker a Verdi (plataforma IA interna de MercadoLibre): reescritura de procesos en YAML con IA generativa, mejorando resultados y centralizando el ecosistema. • Migración de flujos legacy de Botmaker a MCPS en python con FastMCP (Utilizando Fury para el desarrollo de aplicaciones) • Implementación de sistemas RAG sobre Fury (infraestructura cloud interna) para dotar a los bots de fuentes de conocimiento dinámicas y actualizadas. • Participación en múltiples proyectos simultáneos dentro del equipo, con soluciones en producción utilizadas por empleados de MercadoLibre en toda la región. EDUCACIÓN Técnico Universitario en Programación Universidad Tecnológica Nacional – Facultad Regional Avellaneda (UTN FRA) 2023 – 2026 (Materias finalizadas. Título en trámite) · Materias: SQL, Python, Java, MongoDB, Angular, NestJS, Arquitectura y patrones de diseño Desarrollo Web Full Stack (MERN) UTN BA 2020 – 2021 · Stack: MongoDB, Express, React, Node.js STACK TÉCNICO Bots & Automatización: Botmaker, agentes conversacionales, workflows multicanal IA & LLMs: IA generativa, MCP, RAG, embeddings, sistemas de conocimiento Backend: Node.js, Python, REST APIs, integración SAP SuccessFactors Data & Cloud: BigQuery, GCP, DataFlow (MELI) Fury (MELI) pipelines de datos Frontend: React, Angular, TypeScript Bases de datos: MongoDB, SQL, MySQL Idiomas: Español (nativo) · Inglés (B1) CERTIFICACIONES",
+      "normalized_sha256": "57f660dedc2682b6f0bdbbc5f67690305ae9c81152e68b261bfa85f582df014d"
+    },
+    {
+      "page": 2,
+      "normalized_text": "• Diplomatura en Programación Web Full Stack — UTN · ID: CER-NO9H77PR-69154 • Programador Web Inicial — UTN · ID: CER-SOI8CTEK74019 • Prompting inicial — Founders · Microsoft • n8n + MCP: Automatización y agentes de IA inteligentes — Udemy",
+      "normalized_sha256": "78c18843c4723e3546a3b211edc4177660d67e28c24ab04a5945b822420c4b8a"
+    }
+  ]
+}

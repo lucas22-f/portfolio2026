@@ -1,0 +1,488 @@
+{
+  "schema_version": "1.0.0",
+  "content_version": "838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c",
+  "locale": "es",
+  "records": [
+    {
+      "id": "lucas-figueroa",
+      "kind": "profile",
+      "title": "Lucas Figueroa",
+      "claims": [
+        {
+          "claim_id": "profile-role",
+          "text": "Conversational AI Engineer y Backend Developer.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "profile-contact",
+          "text": "Contacto: (+54) 11 6542-7871 y lucas.200061@gmail.com.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "profile-links",
+          "text": "LinkedIn: linkedin.com/in/lucasfigueroa-dev. GitHub: github.com/lucas22-f.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "profile-summary",
+          "text": "Especializado en agentes inteligentes, sistemas RAG, servidores MCP y automatización empresarial con Python; integra modelos de lenguaje, APIs corporativas y plataformas cloud.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "profile-scale",
+          "text": "Experiencia desarrollando soluciones utilizadas por miles de empleados en Mercado Libre.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "conversational-ai",
+        "backend",
+        "python"
+      ],
+      "aliases": [
+        "Lucas",
+        "Lucas Figueroa",
+        "perfil"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "mercadolibre-conversational-ai",
+      "kind": "experience",
+      "title": "MercadoLibre — Developer / Conversational AI",
+      "claims": [
+        {
+          "claim_id": "experience-role",
+          "text": "Developer / Conversational AI en MercadoLibre como contractor, desde junio de 2025 hasta la actualidad, en modalidad remota desde Buenos Aires, Argentina.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-botmaker",
+          "text": "Botmaker: desarrollo y mantenimiento de workflows de chatbots internos.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-code-actions",
+          "text": "Implementación de Code Actions en Node.js integradas con APIs internas de RRHH y SAP SuccessFactors para vacaciones, liquidaciones y datos de empleados.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-dataflow",
+          "text": "Procesamiento de datos mediante pipelines Python y BigQuery en DataFlow para extracción y transformación a escala, con notificación masiva a empleados.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-fury",
+          "text": "Desarrollos sobre Fury, la infraestructura cloud interna de Mercado Libre.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-verdi",
+          "text": "Migración de flujos legacy de Botmaker a Verdi mediante procesos YAML con IA generativa.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-mcp",
+          "text": "Migración de flujos legacy de Botmaker a MCPs en Python con FastMCP y Fury.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-rag",
+          "text": "Implementación de sistemas RAG sobre Fury para brindar fuentes de conocimiento dinámicas y actualizadas a los bots.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "experience-production",
+          "text": "Participación simultánea en múltiples proyectos con soluciones en producción utilizadas por empleados de Mercado Libre en la región.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "mercadolibre",
+        "conversational-ai",
+        "python",
+        "nodejs"
+      ],
+      "aliases": [
+        "MELI",
+        "Mercado Libre",
+        "experiencia"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "utn-tecnico-programacion",
+      "kind": "education",
+      "title": "Técnico Universitario en Programación",
+      "claims": [
+        {
+          "claim_id": "education-programming-status",
+          "text": "Carrera cursada en UTN FRA entre 2023 y 2026, con materias finalizadas y título en trámite.",
+          "provenance_id": "cv-page-1"
+        },
+        {
+          "claim_id": "education-programming-subjects",
+          "text": "Materias: SQL, Python, Java, MongoDB, Angular, NestJS, arquitectura y patrones de diseño.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "utn",
+        "programacion"
+      ],
+      "aliases": [
+        "UTN FRA",
+        "Técnico en Programación"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "utn-full-stack-mern",
+      "kind": "education",
+      "title": "Desarrollo Web Full Stack (MERN)",
+      "claims": [
+        {
+          "claim_id": "education-mern",
+          "text": "Formación en UTN BA entre 2020 y 2021 sobre MongoDB, Express, React y Node.js.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "utn",
+        "mern"
+      ],
+      "aliases": [
+        "UTN BA",
+        "MERN"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-bots",
+      "kind": "skill",
+      "title": "Bots y automatización",
+      "claims": [
+        {
+          "claim_id": "skills-bots-claim",
+          "text": "Botmaker, agentes conversacionales y workflows multicanal.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "botmaker",
+        "automation"
+      ],
+      "aliases": [
+        "Bots y automatización"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-ai",
+      "kind": "skill",
+      "title": "IA y LLMs",
+      "claims": [
+        {
+          "claim_id": "skills-ai-claim",
+          "text": "IA generativa, MCP, RAG, embeddings y sistemas de conocimiento.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "ai",
+        "mcp",
+        "rag"
+      ],
+      "aliases": [
+        "IA y LLMs"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-backend",
+      "kind": "skill",
+      "title": "Backend",
+      "claims": [
+        {
+          "claim_id": "skills-backend-claim",
+          "text": "Node.js, Python, APIs REST e integración con SAP SuccessFactors.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "backend",
+        "python",
+        "nodejs"
+      ],
+      "aliases": [
+        "Backend"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-data-cloud",
+      "kind": "skill",
+      "title": "Datos y cloud",
+      "claims": [
+        {
+          "claim_id": "skills-data-cloud-claim",
+          "text": "BigQuery, GCP, DataFlow, Fury y pipelines de datos.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "data",
+        "cloud",
+        "gcp"
+      ],
+      "aliases": [
+        "Datos y cloud"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-frontend",
+      "kind": "skill",
+      "title": "Frontend",
+      "claims": [
+        {
+          "claim_id": "skills-frontend-claim",
+          "text": "React, Angular y TypeScript.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "frontend",
+        "angular"
+      ],
+      "aliases": [
+        "Frontend"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-databases",
+      "kind": "skill",
+      "title": "Bases de datos",
+      "claims": [
+        {
+          "claim_id": "skills-databases-claim",
+          "text": "MongoDB, SQL y MySQL.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "database",
+        "sql"
+      ],
+      "aliases": [
+        "Bases de datos"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "skills-languages",
+      "kind": "skill",
+      "title": "Idiomas",
+      "claims": [
+        {
+          "claim_id": "skills-languages-claim",
+          "text": "Español nativo e inglés B1.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "languages"
+      ],
+      "aliases": [
+        "Idiomas"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ]
+    },
+    {
+      "id": "cert-full-stack",
+      "kind": "education",
+      "title": "Diplomatura en Programación Web Full Stack",
+      "claims": [
+        {
+          "claim_id": "cert-full-stack-claim",
+          "text": "Certificación de UTN, ID CER-NO9H77PR-69154.",
+          "provenance_id": "cv-page-2"
+        }
+      ],
+      "tags": [
+        "certification"
+      ],
+      "aliases": [
+        "Diplomatura en Programación Web Full Stack"
+      ],
+      "provenance": [
+        "cv-page-2"
+      ]
+    },
+    {
+      "id": "cert-web-inicial",
+      "kind": "education",
+      "title": "Programador Web Inicial",
+      "claims": [
+        {
+          "claim_id": "cert-web-inicial-claim",
+          "text": "Certificación de UTN, ID CER-SOI8CTEK74019.",
+          "provenance_id": "cv-page-2"
+        }
+      ],
+      "tags": [
+        "certification"
+      ],
+      "aliases": [
+        "Programador Web Inicial"
+      ],
+      "provenance": [
+        "cv-page-2"
+      ]
+    },
+    {
+      "id": "cert-prompting",
+      "kind": "education",
+      "title": "Prompting inicial",
+      "claims": [
+        {
+          "claim_id": "cert-prompting-claim",
+          "text": "Certificación de Founders y Microsoft.",
+          "provenance_id": "cv-page-2"
+        }
+      ],
+      "tags": [
+        "certification"
+      ],
+      "aliases": [
+        "Prompting inicial"
+      ],
+      "provenance": [
+        "cv-page-2"
+      ]
+    },
+    {
+      "id": "cert-n8n-mcp",
+      "kind": "education",
+      "title": "n8n + MCP",
+      "claims": [
+        {
+          "claim_id": "cert-n8n-mcp-claim",
+          "text": "Curso “Automatización y agentes de IA inteligentes” en Udemy.",
+          "provenance_id": "cv-page-2"
+        }
+      ],
+      "tags": [
+        "certification"
+      ],
+      "aliases": [
+        "n8n + MCP"
+      ],
+      "provenance": [
+        "cv-page-2"
+      ]
+    },
+    {
+      "id": "project-dataflow-notifications",
+      "kind": "project",
+      "title": "Procesamiento y notificación masiva",
+      "claims": [
+        {
+          "claim_id": "project-dataflow-notifications-claim",
+          "text": "Pipelines en Python y BigQuery sobre DataFlow para extraer y transformar datos a escala y realizar notificaciones masivas a empleados.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "python",
+        "bigquery",
+        "dataflow"
+      ],
+      "aliases": [
+        "Procesamiento y notificación masiva"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ],
+      "project": {
+        "summary": "Pipelines en Python y BigQuery sobre DataFlow para extraer y transformar datos a escala y realizar notificaciones masivas a empleados."
+      }
+    },
+    {
+      "id": "project-chat-migrations",
+      "kind": "project",
+      "title": "Migración de flujos conversacionales",
+      "claims": [
+        {
+          "claim_id": "project-chat-migrations-claim",
+          "text": "Migración de flujos legacy de Botmaker a Verdi y a MCPs en Python con FastMCP sobre Fury.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "botmaker",
+        "verdi",
+        "mcp",
+        "fastmcp"
+      ],
+      "aliases": [
+        "Migración de flujos conversacionales"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ],
+      "project": {
+        "summary": "Migración de flujos legacy de Botmaker a Verdi y a MCPs en Python con FastMCP sobre Fury."
+      }
+    },
+    {
+      "id": "project-rag-fury",
+      "kind": "project",
+      "title": "Sistemas RAG sobre Fury",
+      "claims": [
+        {
+          "claim_id": "project-rag-fury-claim",
+          "text": "Implementación de sistemas RAG sobre Fury para aportar a los bots fuentes de conocimiento dinámicas y actualizadas.",
+          "provenance_id": "cv-page-1"
+        }
+      ],
+      "tags": [
+        "rag",
+        "fury",
+        "conversational-ai"
+      ],
+      "aliases": [
+        "Sistemas RAG sobre Fury"
+      ],
+      "provenance": [
+        "cv-page-1"
+      ],
+      "project": {
+        "summary": "Implementación de sistemas RAG sobre Fury para aportar a los bots fuentes de conocimiento dinámicas y actualizadas."
+      }
+    }
+  ]
+}

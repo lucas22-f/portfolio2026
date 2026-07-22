@@ -30,7 +30,7 @@ Chain strategy: stacked-to-main
 
 - [x] 1.1 Scaffold strict zoneless Angular in `frontend/` with Tailwind, Angular Aria, Vitest/Playwright; scaffold Poetry FastAPI in `backend/` with pytest, lint/type checks, and lockfiles.
 - [x] 1.2 Prove runners, then set `openspec/config.yaml` strict TDD/apply commands; later behavior uses RED → GREEN → REFACTOR.
-- [ ] 1.3 RED/GREEN/REFACTOR `content/v1/{portfolio.schema.json,portfolio.json,reviewed-manifest.json}` plus backend/frontend validators for records, provenance locators, normalized hashes, and identical content-version handshake. [Content: shared facts, missing fields, provenance]
+- [x] 1.3 RED/GREEN/REFACTOR `content/v1/{portfolio.schema.json,portfolio.json,reviewed-manifest.json}` plus backend/frontend validators for records, provenance locators, normalized hashes, and identical content-version handshake. [Content: shared facts, missing fields, provenance]
 
 ## Phase 2: Accessible Static Experience
 
