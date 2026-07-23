@@ -9,9 +9,16 @@ FastAPI service for the portfolio. Dependencies and virtual environments are man
 
 ## Setup
 
+Install dependencies and register the development command once:
+
 ```powershell
 poetry install
-poetry run uvicorn app.main:app --reload
+```
+
+Then start the local server with:
+
+```powershell
+poetry run dev
 ```
 
 The production entry point is:
@@ -19,6 +26,4 @@ The production entry point is:
 ```powershell
 poetry run uvicorn app.main:app --host 0.0.0.0 --port $env:PORT
 ```
-
-Quality and test commands are intentionally verified in SDD task 1.2.
 
