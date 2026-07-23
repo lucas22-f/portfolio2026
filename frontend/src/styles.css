@@ -1,22 +1,26 @@
 @import 'tailwindcss';
 
 :root {
-  color-scheme: light;
-  --color-paper: #f3f0e8;
-  --color-surface: #fbfaf6;
-  --color-ink: #14231f;
-  --color-text: #34453f;
-  --color-muted: #68766f;
-  --color-line: #d6d4ca;
-  --color-accent: #9a3d24;
-  --font-display: Georgia, 'Times New Roman', serif;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color-scheme: dark;
+  --color-bg: #080c16;
+  --color-surface: #111827;
+  --color-elevated: #1a2332;
+  --color-heading: #f1f5f9;
+  --color-text: #cbd5e1;
+  --color-muted: #64748b;
+  --color-line: #1e293b;
+  --color-accent: #10b981;
+  --color-accent-hover: #34d399;
+  --color-accent-subtle: #064e3b;
+  --color-ink: var(--color-heading);
+  --font-display: 'Outfit', sans-serif;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
   margin: 0;
   min-width: 20rem;
-  background: var(--color-paper);
+  background: var(--color-bg);
   color: var(--color-text);
   text-rendering: optimizeLegibility;
 }
@@ -33,9 +37,10 @@ body {
   left: 0.75rem;
   transform: translateY(-150%);
   padding: 0.75rem 1rem;
-  background: var(--color-ink);
-  color: var(--color-surface);
+  background: var(--color-elevated);
+  color: var(--color-heading);
   font-weight: 700;
+  border: 1px solid var(--color-accent);
 }
 
 .skip-link:focus {
