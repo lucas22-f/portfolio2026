@@ -4,13 +4,16 @@ import { loadPortfolioPresentation } from './core/content/portfolio-content';
 import { ValidatedContentBundle } from './core/content/content-validator';
 import { CONTENT_UNAVAILABLE_PATH } from './core/routing/navigation-error-handler';
 import { ContentUnavailablePage } from './features/content-unavailable/content-unavailable-page';
+import { ChatPage } from './features/chat/chat-page';
+import { JourneyPage } from './features/journey/journey-page';
 import { PortfolioPage } from './features/portfolio/portfolio-page';
 
 const validatedPortfolioResolver: ResolveFn<ValidatedContentBundle> = () =>
   loadPortfolioPresentation();
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'perfil' },
+  { path: '', pathMatch: 'full', component: JourneyPage },
+  { path: 'chat', component: ChatPage },
   {
     path: 'perfil',
     component: PortfolioPage,

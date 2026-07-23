@@ -24,4 +24,22 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('router-outlet')).not.toBeNull();
   });
+
+  it('keeps classic navigation available from the guided entry point', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const links = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLAnchorElement>('nav a'),
+    );
+
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/perfil',
+      '/experiencia',
+      '/educacion',
+      '/habilidades',
+      '/proyectos',
+      '/chat',
+    ]);
+  });
 });

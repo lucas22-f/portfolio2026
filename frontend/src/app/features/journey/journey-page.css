@@ -1,0 +1,117 @@
+:host {
+  display: block;
+}
+
+.journey {
+  display: grid;
+  gap: clamp(3rem, 10vw, 7rem);
+  width: min(100% - 2rem, 72rem);
+  margin-inline: auto;
+  padding-block: clamp(3.5rem, 10vw, 8rem);
+}
+
+.journey__intro,
+.journey__step {
+  max-width: 42rem;
+}
+
+.journey__eyebrow,
+.journey__status {
+  margin: 0 0 0.75rem;
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: 0.98;
+}
+
+h1 {
+  max-width: 11ch;
+  font-size: clamp(3rem, 10vw, 6.5rem);
+}
+
+h2 {
+  font-size: clamp(2rem, 6vw, 4rem);
+}
+
+.journey__lead,
+.journey__step > p:not(.journey__status) {
+  max-width: 36rem;
+  margin-block: 1.25rem 0;
+  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  line-height: 1.6;
+}
+
+.journey__step {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border-block: 1px solid var(--color-line);
+  opacity: 0;
+  transform: translateY(1rem);
+  transition:
+    opacity 360ms ease-out,
+    transform 360ms ease-out;
+}
+
+.journey__step.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.journey__direct-link,
+.journey__action,
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  margin-top: 1.75rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--color-ink);
+  background: var(--color-ink);
+  color: var(--color-surface);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.journey__direct-link {
+  background: transparent;
+  color: var(--color-ink);
+}
+
+.journey__direct-link:hover,
+.journey__action:hover,
+button:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-surface);
+}
+
+@media (min-width: 48rem) {
+  .journey {
+    width: min(100% - 4rem, 72rem);
+  }
+
+  .journey__step {
+    margin-left: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journey__step {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
