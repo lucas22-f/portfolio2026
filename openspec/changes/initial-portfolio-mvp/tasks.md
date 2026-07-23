@@ -34,7 +34,7 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Accessible Static Experience
 
-- [ ] 2.1 RED/GREEN/REFACTOR routes and semantic views under `frontend/src/app/{core,features,shared}/` for profile, experience, education, skills, projects, and project cards. [Content: shared presentation]
+- [x] 2.1 RED/GREEN/REFACTOR routes and semantic views under `frontend/src/app/{core,features,shared}/` for profile, experience, education, skills, projects, and project cards. [Content: shared presentation]
 - [ ] 2.2 RED/GREEN/REFACTOR the progressive journey, persistent classic navigation, terminal `/chat` focus transfer, mobile direct flow, reduced motion, keyboard order, live regions, 44px targets, and accessible `frontend/src/styles.css`. [Journey: all scenarios]
 
 ## Phase 3: Grounded Backend
