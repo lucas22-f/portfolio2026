@@ -26,11 +26,11 @@ describe('portfolio routes', () => {
     expect(view.textContent).toContain(reviewedFact);
   });
 
-  it('redirects the root route to the profile view', async () => {
+  it('uses the root route for the guided entry point', async () => {
     const harness = await RouterTestingHarness.create('/');
 
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent?.trim()).toBe(
-      'Perfil profesional',
+      'Un recorrido claro, sin atajos.',
     );
   });
 });
