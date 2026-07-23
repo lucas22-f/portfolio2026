@@ -1,12 +1,22 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   color-scheme: light;
+  --color-paper: #f3f0e8;
+  --color-surface: #fbfaf6;
+  --color-ink: #14231f;
+  --color-text: #34453f;
+  --color-muted: #68766f;
+  --color-line: #d6d4ca;
+  --color-accent: #9a3d24;
+  --font-display: Georgia, 'Times New Roman', serif;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
   margin: 0;
   min-width: 20rem;
-  background: #f8fafc;
+  background: var(--color-paper);
+  color: var(--color-text);
+  text-rendering: optimizeLegibility;
 }

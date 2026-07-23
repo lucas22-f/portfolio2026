@@ -1,0 +1,44 @@
+:host {
+  display: block;
+}
+
+.record-card {
+  height: 100%;
+  box-sizing: border-box;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+}
+
+.record-card__eyebrow {
+  margin: 0 0 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.record-card__claims {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  color: var(--color-text);
+  line-height: 1.65;
+  list-style: none;
+}
+
+.record-card__claims li + li {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-line);
+}

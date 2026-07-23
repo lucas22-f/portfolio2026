@@ -10,6 +10,9 @@ dependencies = [
     "uvicorn[standard]>=0.35.0,<1.0.0",
 ]
 
+[project.scripts]
+dev = "app.dev:main"
+
 [tool.poetry]
 packages = [{ include = "app" }]
 
