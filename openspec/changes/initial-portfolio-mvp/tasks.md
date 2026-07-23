@@ -40,7 +40,7 @@ Chain strategy: stacked-to-main
 ## Phase 3: Grounded Backend
 
 - [x] 3.1 RED/GREEN/REFACTOR `backend/app/domain/` retrieval/safety: Spanish normalization, stable score/top-k, allowed/unsupported/unsafe classification, provenance, thresholds, and limits. [Chat: supported, refusal, limits]
-- [ ] 3.2 RED/GREEN/REFACTOR `backend/app/application/` candidate validation/hydration: allow-listed parts, atomic claim verification, HTML/unknown-reference rejection, safe mappings, and ordered typed NDJSON events. [Chat: typed/invalid output]
+- [x] 3.2 RED/GREEN/REFACTOR `backend/app/application/` candidate validation/hydration: allow-listed parts, atomic claim verification, HTML/unknown-reference rejection, safe mappings, and ordered typed NDJSON events. [Chat: typed/invalid output]
 - [ ] 3.3 RED/GREEN/REFACTOR `ChatProvider`/`OpenAIChatProvider` in `backend/app/infrastructure/`; inject model/time/cost limits and fake provider without credentials or prompt/secret logging. [Chat: mocked CI, failures]
 - [ ] 3.4 RED/GREEN/REFACTOR FastAPI `/api/v1/chat/stream`, `/metadata`, `/health`, exact CORS origins, and anchored project-scoped preview regex; verify readiness 200/503 and reject unrelated Vercel origins.
 
