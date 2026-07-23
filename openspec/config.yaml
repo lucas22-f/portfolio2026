@@ -1,32 +1,61 @@
 schema: spec-driven
 
 context: |
-  Project state: blank repository; application code has not been scaffolded.
-  Planned frontend: Angular 22, standalone APIs, strict mode, zoneless change detection, Tailwind CSS, Angular Aria.
-  Planned backend: FastAPI with Pydantic, managed with Python and Poetry.
-  Planned testing: Vitest for unit tests, pytest for backend tests, Playwright for end-to-end tests.
+  Project state: Angular and FastAPI foundations are scaffolded under frontend/ and backend/.
+  Frontend: Angular 22, standalone APIs, strict mode, zoneless change detection, Tailwind CSS, Angular Aria.
+  Backend: FastAPI with Pydantic, managed with Python 3.13 and Poetry.
+  Testing: Angular unit-test builder backed by Vitest and pytest are proved; Playwright is configured but its browser runtime remains unproved until sdd-verify.
   Product: a public portfolio with an informational chat grounded in CV and project data.
   Runtime MCP is excluded unless a later requirement demonstrates a concrete need.
 
-strict_tdd: false
+strict_tdd: true
 
 testing:
-  detected_at: 2026-07-21
-  status: unavailable
-  reason: No application manifest, test runner, test configuration, or test command is installed.
-  planned:
-    unit_frontend: Vitest
-    backend: pytest
-    e2e: Playwright
+  detected_at: 2026-07-22
+  status: available
+  runtime:
+    node: 24.15.0
+    npm: 11.12.1
+    python: 3.13.14
+  commands:
+    frontend_unit_scoped:
+      cwd: frontend
+      run: npm test -- --include=src/app/app.spec.ts --watch=false
+    frontend_build:
+      cwd: frontend
+      run: npm run build
+    backend_test_scoped:
+      cwd: backend
+      run: poetry run python -m pytest tests/test_health.py -q
+    backend_lint:
+      cwd: backend
+      run: poetry run ruff check app tests --output-format=concise
+    backend_type_check:
+      cwd: backend
+      run: poetry run mypy app
+    backend_project_check:
+      cwd: backend
+      run: poetry check --lock
+  e2e:
+    package: "@playwright/test@1.61.1"
+    config: frontend/playwright.config.ts
+    status: unproven
+    reason: Browser installation and Playwright execution are intentionally deferred to sdd-verify.
   detected:
-    test_runner: null
-    test_command: ""
-    unit: false
-    integration: false
+    test_runner: Vitest and pytest
+    test_command:
+      frontend:
+        cwd: frontend
+        run: npm test -- --include=<spec-path> --watch=false
+      backend:
+        cwd: backend
+        run: poetry run python -m pytest <test-path> -q
+    unit: true
+    integration: true
     e2e: false
     coverage: false
-    linter: false
-    type_checker: false
+    linter: true
+    type_checker: true
     formatter: false
 
 rules:
@@ -46,11 +75,29 @@ rules:
   apply:
     - Follow existing code patterns after scaffolding establishes them.
     - Do not add runtime MCP without an approved requirement and design rationale.
-    tdd: false
-    test_command: ""
+    tdd: true
+    test_command:
+      frontend:
+        cwd: frontend
+        run: npm test -- --include=<spec-path> --watch=false
+      backend:
+        cwd: backend
+        run: poetry run python -m pytest <test-path> -q
   verify:
-    test_command: ""
-    build_command: ""
+    test_command:
+      frontend:
+        cwd: frontend
+        run: npm test -- --include=<spec-path> --watch=false
+      backend:
+        cwd: backend
+        run: poetry run python -m pytest <test-path> -q
+      e2e:
+        cwd: frontend
+        run: npm run test:e2e
+        gate: Run only during explicit sdd-verify after browser installation.
+    build_command:
+      cwd: frontend
+      run: npm run build
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas.

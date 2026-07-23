@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:portfolio-lucas:content:portfolio:v1",
+  "title": "Reviewed portfolio content",
+  "x-semantic-constraints": {
+    "uniqueRecordIds": true,
+    "globallyUniqueClaimIds": true,
+    "recordProvenanceMatchesClaims": true
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "content_version", "locale", "records"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "content_version": { "$ref": "#/$defs/sha256" },
+    "locale": { "const": "es" },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/record" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "text", "provenance_id"],
+      "properties": {
+        "claim_id": { "$ref": "#/$defs/identifier" },
+        "text": { "$ref": "#/$defs/nonEmptyString" },
+        "provenance_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "projectLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "url"],
+      "properties": {
+        "label": { "$ref": "#/$defs/nonEmptyString" },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary"],
+      "properties": {
+        "summary": { "$ref": "#/$defs/nonEmptyString" },
+        "links": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/projectLink" }
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "claims", "tags", "aliases", "provenance"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "kind": {
+          "enum": ["profile", "experience", "education", "skill", "project"]
+        },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/claim" }
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "project": { "$ref": "#/$defs/project" },
+        "provenance": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "project" } }, "required": ["kind"] },
+          "then": { "required": ["project"] },
+          "else": { "not": { "required": ["project"] } }
+        }
+      ]
+    }
+  }
+}

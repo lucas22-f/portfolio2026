@@ -28,9 +28,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 1: Foundation and Contracts
 
-- [ ] 1.1 Scaffold strict zoneless Angular in `frontend/` with Tailwind, Angular Aria, Vitest/Playwright; scaffold Poetry FastAPI in `backend/` with pytest, lint/type checks, and lockfiles.
-- [ ] 1.2 Prove runners, then set `openspec/config.yaml` strict TDD/apply commands; later behavior uses RED → GREEN → REFACTOR.
-- [ ] 1.3 RED/GREEN/REFACTOR `content/v1/{portfolio.schema.json,portfolio.json,reviewed-manifest.json}` plus backend/frontend validators for records, provenance locators, normalized hashes, and identical content-version handshake. [Content: shared facts, missing fields, provenance]
+- [x] 1.1 Scaffold strict zoneless Angular in `frontend/` with Tailwind, Angular Aria, Vitest/Playwright; scaffold Poetry FastAPI in `backend/` with pytest, lint/type checks, and lockfiles.
+- [x] 1.2 Prove runners, then set `openspec/config.yaml` strict TDD/apply commands; later behavior uses RED → GREEN → REFACTOR.
+- [x] 1.3 RED/GREEN/REFACTOR `content/v1/{portfolio.schema.json,portfolio.json,reviewed-manifest.json}` plus backend/frontend validators for records, provenance locators, normalized hashes, and identical content-version handshake. [Content: shared facts, missing fields, provenance]
 
 ## Phase 2: Accessible Static Experience
 
@@ -51,6 +51,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: End-to-End Delivery
 
-- [ ] 5.1 Add mocked Playwright journeys in `e2e/` for navigation, accessibility, grounded card, refusals/errors, invalid parts, and compatibility disablement.
+- [ ] 5.1 Add mocked Playwright journeys in `frontend/e2e/` for navigation, accessibility, grounded card, refusals/errors, invalid parts, and compatibility disablement.
 - [ ] 5.2 Add root-context Vercel configuration for `frontend/` and Railway `backend/Dockerfile` copying `backend/` plus `content/v1`, installing Poetry lock, binding `0.0.0.0:$PORT`, and setting environment-specific API/CORS values.
 - [ ] 5.3 Run scoped then full Vitest/pytest/Playwright, builds, content rehash, health/metadata/NDJSON smoke, compatibility/rollback checks; document commands/secrets in root `README.md`.
