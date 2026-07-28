@@ -34,23 +34,40 @@ import {
           id="chat-message"
           name="message"
           [(ngModel)]="message"
-          [disabled]="state().status === 'streaming'"
+          [disabled]="state().status === 'streaming' || compatible() === false"
+          [attr.disabled]="compatible() === false ? '' : null"
           rows="3"
           required
         ></textarea>
-        <button type="submit" [disabled]="!message.trim() || state().status === 'streaming'">
+        <button
+          type="submit"
+          [disabled]="!message.trim() || state().status === 'streaming' || compatible() === false"
+        >
           {{ state().status === 'streaming' ? 'Consultando…' : 'Enviar consulta' }}
         </button>
       </form>
 
       <p class="sr-only" aria-live="polite" aria-atomic="true">{{ state().announcement }}</p>
-      @if (state().status === 'error' || state().status === 'refused') {
+      @if (compatible() === false) {
+        <section class="chat-status" role="alert">
+          <p>El chat no est? disponible temporalmente.</p>
+        </section>
+      } @else if (state().status === 'error' || state().status === 'refused') {
         <section class="chat-status" [attr.role]="state().status === 'error' ? 'alert' : 'status'">
           <p>{{ state().announcement }}</p>
           @if (state().retryable) {
             <button type="button" (click)="retry()">Reintentar</button>
           }
         </section>
+      }
+
+      @if (state().model || state().usage) {
+        <p class="chat-metadata" aria-live="polite">
+          Modelo: {{ state().model }}
+          @if (state().usage?.total_tokens !== undefined) {
+            ? Uso: {{ state().usage?.total_tokens }} tokens
+          }
+        </p>
       }
 
       <section class="chat-response" aria-label="Respuesta respaldada">
@@ -84,16 +101,22 @@ export class ChatPage implements AfterViewInit {
   private readonly client = inject(ChatClient);
   private readonly heading = viewChild.required<ElementRef<HTMLElement>>('heading');
   readonly state = signal<ChatState>(createChatState());
+  readonly compatible = signal<boolean | undefined>(undefined);
   message = '';
   private lastMessage = '';
 
   ngAfterViewInit(): void {
     this.heading().nativeElement.focus();
+    void this.loadCompatibility();
+  }
+
+  private async loadCompatibility(): Promise<void> {
+    this.compatible.set(await this.client.checkCompatibility());
   }
 
   async submit(): Promise<void> {
     this.lastMessage = this.message.trim();
-    if (!this.lastMessage) return;
+    if (!this.lastMessage || this.compatible() === false) return;
     this.state.set({
       ...createChatState(),
       status: 'streaming',
@@ -108,6 +131,11 @@ export class ChatPage implements AfterViewInit {
         error instanceof ChatStreamError ||
         (typeof error === 'object' && error !== null && 'code' in error && 'retryable' in error);
       const invalidOutput = streamError && error.code === 'invalid-provider-output';
+      const incompatible = streamError && error.code === 'content-incompatible';
+      if (incompatible) {
+        this.compatible.set(false);
+        return;
+      }
       this.state.update((current) => ({
         ...current,
         status: 'error',

@@ -322,3 +322,21 @@ def test_default_app_composes_model_without_reading_provider_private_state(
     monkeypatch.setattr(main, "OpenAIChatProvider", ProviderWithoutPrivateLimits)
 
     assert TestClient(main._default_app()).get("/metadata").json()["model"] == "gpt-5-mini"
+
+
+def test_api_v1_metadata_and_done_expose_compatible_contract() -> None:
+    client = _client(provider=FakeProvider())
+
+    metadata = client.get("/api/v1/metadata")
+    events = _events(
+        client.post(
+            "/api/v1/chat/stream",
+            json={"message": "MercadoLibre", "locale": "es", "client_request_id": "c-contract"},
+        )
+    )
+
+    assert metadata.status_code == 200
+    assert metadata.json()["content_version"] == events[0]["content_version"]
+    assert events[-1]["content_version"] == metadata.json()["content_version"]
+    assert events[-1]["model"] == metadata.json()["model"]
+    assert events[-1]["usage"] == {"total_tokens": 0}

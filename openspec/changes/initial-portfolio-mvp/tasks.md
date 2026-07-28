@@ -47,7 +47,7 @@ Chain strategy: stacked-to-main
 ## Phase 4: Typed Chat Integration
 
 - [x] 4.1 RED/GREEN/REFACTOR `frontend/src/app/features/chat/` NDJSON client/state/renderers for allowed parts, refusal/error/retry, sequence handling, and accessible announcements.
-- [ ] 4.2 RED/GREEN/REFACTOR metadata compatibility: disable chat on mismatch while static routes remain usable; verify start/done version, model, and usage.
+- [x] 4.2 RED/GREEN/REFACTOR metadata compatibility: disable chat on mismatch while static routes remain usable; verify start/done version, model, and usage.
 
 ## Phase 5: End-to-End Delivery
 

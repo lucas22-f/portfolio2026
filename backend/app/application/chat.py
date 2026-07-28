@@ -92,6 +92,8 @@ class DoneEvent(BaseModel):
     sequence: int
     type: Literal["done"] = "done"
     content_version: str
+    model: str
+    usage: dict[str, int]
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +272,8 @@ def build_event_stream(
     validated_parts: list[TextPart | SourcePart | ProjectCardPart] | None = None,
     refusal: dict[str, object] | None = None,
     error: dict[str, object] | None = None,
+    model: str = "fake",
+    usage: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Build an ordered list of typed NDJSON event dicts.
 
@@ -329,6 +333,8 @@ def build_event_stream(
             request_id=request_id,
             sequence=sequence,
             content_version=content_version,
+            model=model,
+            usage=usage or {"total_tokens": 0},
         ).model_dump(mode="json")
     )
 

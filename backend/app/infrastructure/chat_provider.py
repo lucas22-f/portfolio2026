@@ -10,6 +10,16 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 Candidate = dict[str, object]
+
+
+class ProviderResult(list[Candidate]):
+    """Validated candidates with provider-reported token usage."""
+
+    def __init__(self, candidates: Sequence[Mapping[str, object]], *, total_tokens: int) -> None:
+        super().__init__(dict(candidate) for candidate in candidates)
+        self.total_tokens = total_tokens
+
+
 Transport = Callable[[str, bytes, dict[str, str], float], tuple[int, bytes]]
 
 
@@ -61,8 +71,8 @@ class ChatProvider(ABC):
         self,
         candidates: Sequence[Mapping[str, object]],
         bundle: Mapping[str, object],
-    ) -> list[Candidate]:
-        """Return raw candidate parts; application validation happens upstream."""
+    ) -> ProviderResult:
+        """Return raw candidate parts and reported token usage."""
 
 
 class FakeProvider(ChatProvider):
@@ -81,11 +91,11 @@ class FakeProvider(ChatProvider):
         self,
         candidates: Sequence[Mapping[str, object]],
         bundle: Mapping[str, object],
-    ) -> list[Candidate]:
+    ) -> ProviderResult:
         del candidates, bundle
         if self._failure is not None:
             raise self._failure
-        return [dict(candidate) for candidate in self._candidates]
+        return ProviderResult(self._candidates, total_tokens=0)
 
 
 class OpenAIChatProvider(ChatProvider):
@@ -110,7 +120,7 @@ class OpenAIChatProvider(ChatProvider):
         self,
         candidates: Sequence[Mapping[str, object]],
         bundle: Mapping[str, object],
-    ) -> list[Candidate]:
+    ) -> ProviderResult:
         input_value = json.dumps(
             {"candidates": [dict(candidate) for candidate in candidates], "bundle": dict(bundle)},
             ensure_ascii=False,
@@ -159,7 +169,7 @@ class OpenAIChatProvider(ChatProvider):
         if projected > self._limits.cost_limit_usd:
             raise ProviderFailure("limit-exceeded", retryable=False)
 
-    def _parse_response(self, response: bytes) -> list[Candidate]:
+    def _parse_response(self, response: bytes) -> ProviderResult:
         try:
             payload = json.loads(response)
             usage = payload["usage"]
@@ -185,7 +195,7 @@ class OpenAIChatProvider(ChatProvider):
             isinstance(item, dict) for item in candidates
         ):
             raise ProviderFailure("invalid-provider-output", retryable=False)
-        return [dict(item) for item in candidates]
+        return ProviderResult(candidates, total_tokens=input_tokens + output_tokens)
 
     def _ensure_actual_cost(self, input_tokens: int, output_tokens: int) -> None:
         actual = (

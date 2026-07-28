@@ -129,7 +129,8 @@ def create_app(
             "content_version": bundle.portfolio.content_version,
         }
 
-    @app.get("/metadata", tags=["system"])
+    @app.get("/api/v1/metadata", tags=["system"])
+    @app.get("/metadata", tags=["system"], include_in_schema=False)
     async def metadata():  # type: ignore[no-untyped-def]
         if not is_ready or bundle is None or provider is None:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
@@ -149,6 +150,7 @@ def create_app(
                 request.client_request_id,
                 bundle.portfolio.content_version,
                 refusal=_refusal(outcome.classification),
+                model=provider_model,
             )
             return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
 
@@ -176,11 +178,13 @@ def create_app(
             ]
         }
         try:
-            candidates = await run_in_threadpool(
+            completion = await run_in_threadpool(
                 provider.generate,
                 retrieval_candidates,
                 public_evidence,
             )
+            candidates = list(completion)
+            usage = {"total_tokens": getattr(completion, "total_tokens", 0)}
             parts = [
                 validate_candidate(
                     _validate_retrieval_references(
@@ -194,18 +198,22 @@ def create_app(
                 request.client_request_id,
                 bundle.portfolio.content_version,
                 validated_parts=parts,
+                model=provider_model,
+                usage=usage,
             )
         except CandidateValidationError as error:
             events = build_event_stream(
                 request.client_request_id,
                 bundle.portfolio.content_version,
                 error={"code": error.code, "message": error.message, "retryable": False},
+                model=provider_model,
             )
         except ProviderFailure as error:
             events = build_event_stream(
                 request.client_request_id,
                 bundle.portfolio.content_version,
                 error=_provider_error(error),
+                model=provider_model,
             )
         return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
 
