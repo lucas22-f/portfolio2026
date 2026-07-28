@@ -2,14 +2,14 @@
 
 ## Review Workload Forecast
 
-| Field | Value |
-|---|---|
-| Estimated changed lines | 2,500–4,000 |
-| 400-line budget risk | High |
-| Chained PRs recommended | Yes |
-| Suggested split | Foundation → content/static UI → grounded API → chat integration → E2E/deployment |
-| Delivery strategy | ask-on-risk |
-| Chain strategy | stacked-to-main |
+| Field                   | Value                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| Estimated changed lines | 2,500–4,000                                                                       |
+| 400-line budget risk    | High                                                                              |
+| Chained PRs recommended | Yes                                                                               |
+| Suggested split         | Foundation → content/static UI → grounded API → chat integration → E2E/deployment |
+| Delivery strategy       | ask-on-risk                                                                       |
+| Chain strategy          | stacked-to-main                                                                   |
 
 Decision needed before apply: No
 Chained PRs recommended: Yes
@@ -18,13 +18,13 @@ Chain strategy: stacked-to-main
 
 ### Suggested Work Units
 
-| Unit | Goal | Sequential boundary |
-|---|---|---|
-| 1 | Scaffold toolchains/contracts | PR 1 → main |
-| 2 | Publish content/journey | PR 2 → main after PR 1 |
-| 3 | Deliver grounded backend | PR 3 → main after PR 2 |
-| 4 | Integrate typed chat | PR 4 → main after PR 3 |
-| 5 | Prove/deploy MVP | PR 5 → main after PR 4 |
+| Unit | Goal                          | Sequential boundary    |
+| ---- | ----------------------------- | ---------------------- |
+| 1    | Scaffold toolchains/contracts | PR 1 → main            |
+| 2    | Publish content/journey       | PR 2 → main after PR 1 |
+| 3    | Deliver grounded backend      | PR 3 → main after PR 2 |
+| 4    | Integrate typed chat          | PR 4 → main after PR 3 |
+| 5    | Prove/deploy MVP              | PR 5 → main after PR 4 |
 
 ## Phase 1: Foundation and Contracts
 
@@ -46,7 +46,7 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: Typed Chat Integration
 
-- [ ] 4.1 RED/GREEN/REFACTOR `frontend/src/app/features/chat/` NDJSON client/state/renderers for allowed parts, refusal/error/retry, sequence handling, and accessible announcements.
+- [x] 4.1 RED/GREEN/REFACTOR `frontend/src/app/features/chat/` NDJSON client/state/renderers for allowed parts, refusal/error/retry, sequence handling, and accessible announcements.
 - [ ] 4.2 RED/GREEN/REFACTOR metadata compatibility: disable chat on mismatch while static routes remain usable; verify start/done version, model, and usage.
 
 ## Phase 5: End-to-End Delivery
