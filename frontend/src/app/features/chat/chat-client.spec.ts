@@ -12,10 +12,10 @@ describe('parseNdjsonEvents', () => {
   it('accepts only ordered allow-listed parts', () => {
     const events = parseNdjsonEvents(
       [
-        '{"request_id":"r-1","sequence":1,"type":"start","content_version":"v1"}',
+        '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
         '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","text":"Respuesta respaldada.","record_ids":["p1"],"claim_ids":["c1"]}}',
         '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"source","record_id":"p1","label":"Proyecto"}}',
-        '{"request_id":"r-1","sequence":4,"type":"done","content_version":"v1","model":"mock","usage":{"total_tokens":4}}',
+        '{"request_id":"r-1","sequence":4,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4},"model":"mock","usage":{"total_tokens":4}}',
       ].join('\n'),
     );
 
@@ -33,13 +33,20 @@ describe('parseNdjsonEvents', () => {
       ),
     ).toThrow('invalid-provider-output');
     expect(() =>
-      parseNdjsonEvents('{"request_id":"r","sequence":2,"type":"start","content_version":"v1"}'),
+      parseNdjsonEvents(
+        '{"request_id":"r","sequence":2,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+      ),
     ).toThrow('invalid-provider-output');
   });
 });
 
 describe('applyChatEvent', () => {
-  const start: ChatEvent = { request_id: 'r-1', sequence: 1, type: 'start', content_version: 'v1' };
+  const start: ChatEvent = {
+    request_id: 'r-1',
+    sequence: 1,
+    type: 'start',
+    content_version: '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
+  };
 
   it('renders a refusal as a Spanish non-retryable response', () => {
     const state = applyChatEvent(applyChatEvent(createChatState(), start), {
@@ -90,7 +97,10 @@ describe('ChatClient stream', () => {
       'part',
       '{"request_id":"r-1","sequence":1,"type":"part","part":{"type":"text","text":"No debe mostrarse","record_ids":[],"claim_ids":[]}}',
     ],
-    ['done', '{"request_id":"r-1","sequence":1,"type":"done","content_version":"v1"}'],
+    [
+      'done',
+      '{"request_id":"r-1","sequence":1,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}',
+    ],
     [
       'error',
       '{"request_id":"r-1","sequence":1,"type":"error","code":"provider-unavailable","message":"Error seguro.","retryable":true}',
@@ -119,8 +129,8 @@ describe('ChatClient stream', () => {
     globalThis.fetch = async () =>
       new Response(
         [
-          '{"request_id":"r-1","sequence":1,"type":"start","content_version":"v1"}',
-          '{"request_id":"r-1","sequence":2,"type":"start","content_version":"v1"}',
+          '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+          '{"request_id":"r-1","sequence":2,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
         ].join('\n'),
         { status: 200 },
       );
@@ -145,12 +155,12 @@ describe('ChatClient stream', () => {
           start(controller) {
             controller.enqueue(
               encoder.encode(
-                '{"request_id":"r-1","sequence":1,"type":"start","content_version":"v1"}\n{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","text":"Hola","record_ids":[],"claim_ids":[]}}',
+                '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","text":"Hola","record_ids":[],"claim_ids":[]}}',
               ),
             );
             controller.enqueue(
               encoder.encode(
-                '\n{"request_id":"r-1","sequence":3,"type":"done","content_version":"v1"}\n',
+                '\n{"request_id":"r-1","sequence":3,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}\n',
               ),
             );
             controller.close();
@@ -170,9 +180,12 @@ describe('ChatClient stream', () => {
   it('rejects a stream that closes without a terminal event as retryable', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () =>
-      new Response('{"request_id":"r-1","sequence":1,"type":"start","content_version":"v1"}\n', {
-        status: 200,
-      });
+      new Response(
+        '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n',
+        {
+          status: 200,
+        },
+      );
 
     const result = new ChatClient().stream('Consulta', () => undefined);
 
@@ -185,8 +198,8 @@ describe('ChatClient stream', () => {
     globalThis.fetch = async () =>
       new Response(
         [
-          '{"request_id":"r-1","sequence":1,"type":"start","content_version":"v1"}',
-          '{"request_id":"r-1","sequence":2,"type":"done","content_version":"v1"}',
+          '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+          '{"request_id":"r-1","sequence":2,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}',
           '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"text","text":"No debe mostrarse","record_ids":[],"claim_ids":[]}}',
         ].join('\n'),
         { status: 200 },
@@ -202,4 +215,63 @@ describe('ChatClient stream', () => {
     expect(events.map((event) => event.type)).toEqual(['start', 'done']);
     globalThis.fetch = originalFetch;
   });
+});
+
+it('checks the metadata endpoint against the embedded content version', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ content_version: 'different-version' }));
+
+  await expect(new ChatClient().checkCompatibility()).resolves.toBe(false);
+  globalThis.fetch = originalFetch;
+});
+
+it('rejects start events with incompatible content versions', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      '{\"request_id\":\"r-1\",\"sequence\":1,\"type\":\"start\",\"content_version\":\"different-version\"}\n',
+    );
+
+  await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+    code: 'content-incompatible',
+    retryable: false,
+  });
+  globalThis.fetch = originalFetch;
+});
+
+it('rejects done events with incompatible content versions', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      [
+        '{\"request_id\":\"r-1\",\"sequence\":1,\"type\":\"start\",\"content_version\":\"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c\"}',
+        '{\"request_id\":\"r-1\",\"sequence\":2,\"type\":\"done\",\"content_version\":\"different-version\",\"model\":\"fake\",\"usage\":{\"total_tokens\":4}}',
+      ].join('\n'),
+    );
+
+  await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+    code: 'content-incompatible',
+    retryable: false,
+  });
+  globalThis.fetch = originalFetch;
+});
+
+it('retains validated model and usage from done events', () => {
+  const started = applyChatEvent(createChatState(), {
+    request_id: 'r-1',
+    sequence: 1,
+    type: 'start',
+    content_version: '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
+  });
+  const complete = applyChatEvent(started, {
+    request_id: 'r-1',
+    sequence: 2,
+    type: 'done',
+    content_version: '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
+    model: 'fake',
+    usage: { total_tokens: 4 },
+  });
+
+  expect(complete).toMatchObject({ model: 'fake', usage: { total_tokens: 4 } });
 });

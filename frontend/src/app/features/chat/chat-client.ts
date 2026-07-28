@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
 
+import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
+
 export type TextPart = { type: 'text'; text: string; record_ids: string[]; claim_ids: string[] };
 export type SourcePart = { type: 'source'; record_id: string; label: string };
 export type ProjectCardPart = {
@@ -20,8 +22,10 @@ export type ChatEvent =
       type: 'done';
       content_version: string;
       model?: string;
-      usage?: { total_tokens?: number };
+      usage?: ChatUsage;
     });
+
+export type ChatUsage = { total_tokens?: number };
 
 export type ChatStatus = 'idle' | 'streaming' | 'complete' | 'refused' | 'error';
 export type ChatState = {
@@ -30,6 +34,8 @@ export type ChatState = {
   parts: ChatPart[];
   announcement: string;
   retryable: boolean;
+  model?: string;
+  usage?: ChatUsage;
 };
 
 const INVALID_OUTPUT = 'invalid-provider-output';
@@ -38,7 +44,7 @@ const HTML_TAG = /<\s*\/?[a-z][^>]*>/i;
 
 export class ChatStreamError extends Error {
   constructor(
-    readonly code: typeof INVALID_OUTPUT | typeof STREAM_CLOSED,
+    readonly code: typeof INVALID_OUTPUT | typeof STREAM_CLOSED | 'content-incompatible',
     readonly retryable: boolean,
   ) {
     super(code);
@@ -77,6 +83,8 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         status: 'complete',
         announcement: 'Respuesta completa.',
         retryable: false,
+        model: event.model,
+        usage: event.usage,
       };
     case 'refusal':
       return { ...state, status: 'refused', announcement: event.message, retryable: false };
@@ -175,13 +183,42 @@ function validateEvent(value: unknown): ChatEvent {
           retryable: raw['retryable'],
         }
       : invalid();
-  if (raw['type'] === 'done')
-    return { ...base, type: 'done', content_version: text(raw['content_version']) };
+  if (raw['type'] === 'done') {
+    const model = text(raw['model']);
+    const usage = raw['usage'];
+    if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return invalid();
+    const totalTokens = (usage as Record<string, unknown>)['total_tokens'];
+    if (
+      totalTokens !== undefined &&
+      (!Number.isInteger(totalTokens) || (totalTokens as number) < 0)
+    )
+      return invalid();
+    return {
+      ...base,
+      type: 'done',
+      content_version: text(raw['content_version']),
+      model,
+      usage: { ...(totalTokens === undefined ? {} : { total_tokens: totalTokens as number }) },
+    };
+  }
   return invalid();
 }
 
 @Injectable({ providedIn: 'root' })
 export class ChatClient {
+  private readonly expectedContentVersion = EXPECTED_CONTENT_VERSION;
+
+  async checkCompatibility(): Promise<boolean> {
+    try {
+      const response = await fetch('/api/v1/metadata');
+      if (!response.ok) return false;
+      const metadata = (await response.json()) as { content_version?: unknown };
+      return metadata.content_version === this.expectedContentVersion;
+    } catch {
+      return false;
+    }
+  }
+
   async stream(
     message: string,
     onEvent: (event: ChatEvent) => void,
@@ -208,6 +245,12 @@ export class ChatClient {
         (requestId && requestId !== event.request_id)
       )
         return invalid();
+      if (
+        (event.type === 'start' || event.type === 'done') &&
+        event.content_version !== this.expectedContentVersion
+      ) {
+        throw new ChatStreamError('content-incompatible', false);
+      }
       requestId ??= event.request_id;
       expectedSequence += 1;
       terminalSeen = ['done', 'error', 'refusal'].includes(event.type);

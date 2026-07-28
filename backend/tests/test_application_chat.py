@@ -28,67 +28,86 @@ def _make_bundle(
     skill_record_id: str = "docker-skill",
 ) -> ContentBundle:
     """Create a minimal valid bundle with a project and a skill record."""
-    portfolio = PortfolioContent.model_validate({
-        "schema_version": "1.0.0",
-        "content_version": "a" * 64,
-        "locale": "es",
-        "records": [
-            {
-                "id": project_record_id,
-                "kind": "project",
-                "title": "Python API REST",
-                "claims": [
-                    {"claim_id": "c1", "text": "Construido con FastAPI", "provenance_id": "p1"},
-                    {"claim_id": "c2", "text": "Usa PostgreSQL", "provenance_id": "p1"},
-                ],
-                "tags": ["fastapi", "python", "backend"],
-                "aliases": ["python-api", "api-rest"],
-                "project": {
-                    "summary": "API REST construida con FastAPI y PostgreSQL.",
-                    "links": [
-                        {"label": "GitHub", "url": "https://github.com/lucas22-f/python-api"},
+    portfolio = PortfolioContent.model_validate(
+        {
+            "schema_version": "1.0.0",
+            "content_version": "a" * 64,
+            "locale": "es",
+            "records": [
+                {
+                    "id": project_record_id,
+                    "kind": "project",
+                    "title": "Python API REST",
+                    "claims": [
+                        {"claim_id": "c1", "text": "Construido con FastAPI", "provenance_id": "p1"},
+                        {"claim_id": "c2", "text": "Usa PostgreSQL", "provenance_id": "p1"},
                     ],
-                },
-                "provenance": ["p1"],
-            },
-            {
-                "id": skill_record_id,
-                "kind": "skill",
-                "title": "Docker",
-                "claims": [
-                    {
-                        "claim_id": "c3",
-                        "text": "Experiencia en Docker compose",
-                        "provenance_id": "p1",
+                    "tags": ["fastapi", "python", "backend"],
+                    "aliases": ["python-api", "api-rest"],
+                    "project": {
+                        "summary": "API REST construida con FastAPI y PostgreSQL.",
+                        "links": [
+                            {"label": "GitHub", "url": "https://github.com/lucas22-f/python-api"},
+                        ],
                     },
-                ],
-                "tags": ["devops", "docker"],
-                "aliases": ["docker"],
-                "provenance": ["p1"],
-            },
-        ],
-    })
-    manifest = ReviewedManifest.model_validate({
-        "schema_version": "1.0.0",
-        "content_version": "a" * 64,
-        "sources": [
-            {"source_id": "cv", "file_name": "cv.pdf", "source_sha256": "b" * 64,
-             "source_text_sha256": "c" * 64, "page_count": 1},
-        ],
-        "entries": [
-            {"provenance_id": "p1", "source_id": "cv", "source_sha256": "b" * 64,
-             "page": 1, "normalized_start": 0, "normalized_end": 10,
-             "excerpt_sha256": "d" * 64, "reviewed_at": "2026-01-01", "reviewer": "test"},
-        ],
-    })
-    source_text = SourceText.model_validate({
-        "schema_version": "1.0.0",
-        "normalization": "unicode-nfc-explicit-whitespace-utf8-offsets-v1",
-        "source_id": "cv",
-        "file_name": "cv.pdf",
-        "source_sha256": "b" * 64,
-        "pages": [{"page": 1, "normalized_text": "test", "normalized_sha256": "e" * 64}],
-    })
+                    "provenance": ["p1"],
+                },
+                {
+                    "id": skill_record_id,
+                    "kind": "skill",
+                    "title": "Docker",
+                    "claims": [
+                        {
+                            "claim_id": "c3",
+                            "text": "Experiencia en Docker compose",
+                            "provenance_id": "p1",
+                        },
+                    ],
+                    "tags": ["devops", "docker"],
+                    "aliases": ["docker"],
+                    "provenance": ["p1"],
+                },
+            ],
+        }
+    )
+    manifest = ReviewedManifest.model_validate(
+        {
+            "schema_version": "1.0.0",
+            "content_version": "a" * 64,
+            "sources": [
+                {
+                    "source_id": "cv",
+                    "file_name": "cv.pdf",
+                    "source_sha256": "b" * 64,
+                    "source_text_sha256": "c" * 64,
+                    "page_count": 1,
+                },
+            ],
+            "entries": [
+                {
+                    "provenance_id": "p1",
+                    "source_id": "cv",
+                    "source_sha256": "b" * 64,
+                    "page": 1,
+                    "normalized_start": 0,
+                    "normalized_end": 10,
+                    "excerpt_sha256": "d" * 64,
+                    "reviewed_at": "2026-01-01",
+                    "reviewer": "test",
+                },
+            ],
+        }
+    )
+    source_text = SourceText.model_validate(
+        {
+            "schema_version": "1.0.0",
+            "normalization": "unicode-nfc-explicit-whitespace-utf8-offsets-v1",
+            "source_id": "cv",
+            "file_name": "cv.pdf",
+            "source_sha256": "b" * 64,
+            "pages": [{"page": 1, "normalized_text": "test", "normalized_sha256": "e" * 64}],
+        }
+    )
     return ContentBundle(portfolio=portfolio, manifest=manifest, source_text=source_text)
 
 
@@ -427,12 +446,15 @@ class TestBuildEventStream:
 
     def test_single_text_part(self) -> None:
         bundle = _make_bundle()
-        part = validate_candidate({
-            "type": "text",
-            "text": "Contenido valido.",
-            "record_ids": [],
-            "claim_ids": [],
-        }, bundle)
+        part = validate_candidate(
+            {
+                "type": "text",
+                "text": "Contenido valido.",
+                "record_ids": [],
+                "claim_ids": [],
+            },
+            bundle,
+        )
         events = build_event_stream(
             request_id="req-002",
             content_version="a" * 64,
@@ -449,12 +471,22 @@ class TestBuildEventStream:
 
     def test_multiple_parts_in_order(self) -> None:
         bundle = _make_bundle()
-        part1 = validate_candidate({
-            "type": "text", "text": "Primero.", "record_ids": [], "claim_ids": [],
-        }, bundle)
-        part2 = validate_candidate({
-            "type": "source", "record_id": "python-proj",
-        }, bundle)
+        part1 = validate_candidate(
+            {
+                "type": "text",
+                "text": "Primero.",
+                "record_ids": [],
+                "claim_ids": [],
+            },
+            bundle,
+        )
+        part2 = validate_candidate(
+            {
+                "type": "source",
+                "record_id": "python-proj",
+            },
+            bundle,
+        )
         events = build_event_stream(
             request_id="req-003",
             content_version="a" * 64,
@@ -550,10 +582,13 @@ class TestBuildEventStream:
 
     def test_project_card_part_in_stream(self) -> None:
         bundle = _make_bundle()
-        part = validate_candidate({
-            "type": "project-card",
-            "record_id": "python-proj",
-        }, bundle)
+        part = validate_candidate(
+            {
+                "type": "project-card",
+                "record_id": "python-proj",
+            },
+            bundle,
+        )
         events = build_event_stream(
             request_id="req-009",
             content_version="a" * 64,
@@ -577,15 +612,29 @@ class TestBuildEventStream:
 
     def test_mixed_validated_parts_types_in_stream(self) -> None:
         bundle = _make_bundle()
-        text_part = validate_candidate({
-            "type": "text", "text": "Texto.", "record_ids": [], "claim_ids": [],
-        }, bundle)
-        source_part = validate_candidate({
-            "type": "source", "record_id": "python-proj",
-        }, bundle)
-        card_part = validate_candidate({
-            "type": "project-card", "record_id": "python-proj",
-        }, bundle)
+        text_part = validate_candidate(
+            {
+                "type": "text",
+                "text": "Texto.",
+                "record_ids": [],
+                "claim_ids": [],
+            },
+            bundle,
+        )
+        source_part = validate_candidate(
+            {
+                "type": "source",
+                "record_id": "python-proj",
+            },
+            bundle,
+        )
+        card_part = validate_candidate(
+            {
+                "type": "project-card",
+                "record_id": "python-proj",
+            },
+            bundle,
+        )
         events = build_event_stream(
             request_id="req-011",
             content_version="a" * 64,
@@ -595,3 +644,21 @@ class TestBuildEventStream:
         assert events[1]["part"]["type"] == "text"
         assert events[2]["part"]["type"] == "source"
         assert events[3]["part"]["type"] == "project-card"
+
+
+def test_done_event_includes_model_and_usage() -> None:
+    events = build_event_stream(
+        request_id="req-usage",
+        content_version="a" * 64,
+        model="tested-model",
+        usage={"total_tokens": 7},
+    )
+
+    assert events[-1] == {
+        "request_id": "req-usage",
+        "sequence": 2,
+        "type": "done",
+        "content_version": "a" * 64,
+        "model": "tested-model",
+        "usage": {"total_tokens": 7},
+    }

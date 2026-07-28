@@ -6,6 +6,7 @@ import { ChatPage } from './chat-page';
 describe('ChatPage', () => {
   it('announces a Spanish grounded response and renders only its text part', async () => {
     const client = {
+      checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
         onEvent({ request_id: 'r-1', sequence: 1, type: 'start', content_version: 'v1' });
         onEvent({
@@ -41,6 +42,7 @@ describe('ChatPage', () => {
 
   it('keeps invalid provider output on the safe non-retryable validation path', async () => {
     const client = {
+      checkCompatibility: async () => true,
       stream: async () => {
         throw Object.assign(new Error('invalid-provider-output'), {
           code: 'invalid-provider-output',
@@ -68,6 +70,7 @@ describe('ChatPage', () => {
 
   it('exits streaming and offers retry when the stream closes early', async () => {
     const client = {
+      checkCompatibility: async () => true,
       stream: async () => {
         throw new ChatStreamError('stream-closed', true);
       },
@@ -88,5 +91,21 @@ describe('ChatPage', () => {
       'No pude completar la respuesta.',
     );
     expect(page.textContent).toContain('Reintentar');
+  });
+
+  it('disables only chat when metadata is incompatible', async () => {
+    const client = { checkCompatibility: async () => false, stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+
+    expect(page.querySelector('[role="alert"]')?.textContent).toContain('chat');
+    expect((page.querySelector('textarea') as HTMLTextAreaElement).disabled).toBe(true);
   });
 });
