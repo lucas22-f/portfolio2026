@@ -1,8 +1,17 @@
-import { expect, test } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
 
 import { mockChatApi, ndjson } from './support/chat-mocks';
 
 const CONTENT_VERSION = '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c';
+
+async function unlockAssistant(page: Page): Promise<void> {
+  await page.goto('/');
+  await page.getByTestId('continue-intro').press('Enter');
+  await page.getByTestId('continue-experience').press('Enter');
+  await page.getByTestId('continue-projects').press('Enter');
+  await page.getByTestId('unlock-assistant').press('Enter');
+  await expect(page.getByTestId('chat-heading')).toBeFocused();
+}
 
 test('keeps classic navigation and the guided journey keyboard-accessible', async ({ page }) => {
   await mockChatApi(page, { metadataVersion: CONTENT_VERSION });
@@ -11,16 +20,20 @@ test('keeps classic navigation and the guided journey keyboard-accessible', asyn
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Saltar al contenido principal' })).toBeFocused();
   await page.getByRole('link', { name: 'Proyectos', exact: true }).click();
-  await expect(page).toHaveURL(/\/proyectos$/);
+  await expect(page).toHaveURL(/\/#projects$/);
   await expect(page.getByRole('heading', { name: 'Proyectos' })).toBeVisible();
-  await expect(page.getByRole('article')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: 'Proyectos' })).toBeFocused();
+  await expect(page.locator('#projects').getByRole('article')).toHaveCount(3);
 
-  await page.goto('/');
-  await page.getByTestId('journey-next').press('Enter');
-  await page.getByTestId('journey-next').press('Enter');
-  await page.getByRole('link', { name: 'Abrir el chat' }).press('Enter');
-  await expect(page).toHaveURL(/\/chat$/);
-  await expect(page.getByTestId('chat-heading')).toBeFocused();
+  await page.goto('/chat');
+  await expect(page).toHaveURL(/\/#assistant$/);
+  await expect(page.getByRole('heading', { name: 'Asistente' })).toBeFocused();
+  await expect(
+    page.getByText('Recorré las secciones anteriores para habilitar el chat.'),
+  ).toBeVisible();
+  await expect(page.getByTestId('chat-heading')).toHaveCount(0);
+
+  await unlockAssistant(page);
 });
 
 test('renders a mocked grounded answer with its source and project card', async ({ page }) => {
@@ -68,13 +81,17 @@ test('renders a mocked grounded answer with its source and project card', async 
     ]),
   });
 
-  await page.goto('/chat');
+  await unlockAssistant(page);
   await page.getByLabel('Tu consulta').fill('¿Qué proyectos de RAG realizó?');
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
 
   await expect(page.getByText('Lucas implementó sistemas RAG sobre Fury.')).toBeVisible();
   await expect(page.getByText('Fuente: CV, página 1')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Sistemas RAG sobre Fury' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Respuesta respaldada' }).getByRole('heading', {
+      name: 'Sistemas RAG sobre Fury',
+    }),
+  ).toBeVisible();
   await expect(page.getByText('Modelo: mock-model')).toBeVisible();
 });
 
@@ -95,7 +112,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
       },
     ]),
   });
-  await page.goto('/chat');
+  await unlockAssistant(page);
   await page.getByLabel('Tu consulta').fill('¿Cuál es su película favorita?');
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
   await expect(page.getByRole('status')).toContainText('No cuento con información publicada');
@@ -112,7 +129,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
       },
     ]),
   });
-  await page.reload();
+  await unlockAssistant(page);
   await page.getByLabel('Tu consulta').fill('Consulta válida');
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
   await expect(page.getByRole('alert')).toContainText('No pude validar la respuesta.');
@@ -123,11 +140,16 @@ test('disables only chat for incompatible metadata while static pages remain usa
   page,
 }) => {
   await mockChatApi(page, { metadataVersion: 'stale-version' });
-  await page.goto('/chat');
+  await unlockAssistant(page);
 
   await expect(page.getByRole('alert')).toContainText('El chat no está disponible temporalmente.');
   await expect(page.getByLabel('Tu consulta')).toBeDisabled();
   await page.getByRole('link', { name: 'Perfil', exact: true }).click();
-  await expect(page).toHaveURL(/\/perfil$/);
-  await expect(page.getByRole('heading', { name: 'Perfil profesional' })).toBeVisible();
+  await expect(page).toHaveURL(/\/#intro$/);
+  await expect(
+    page.getByRole('heading', { name: 'Un recorrido claro, sin atajos.' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Un recorrido claro, sin atajos.' }),
+  ).toBeFocused();
 });
