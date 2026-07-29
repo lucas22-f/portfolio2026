@@ -74,7 +74,9 @@ def _refusal(classification: str) -> dict[str, object]:
 def _configured_origins(value: str | None) -> tuple[str, ...]:
     """Read exact CORS origins from an environment value without enabling wildcards."""
     origins = tuple(
-        origin.strip() for origin in (value or "").split(",") if origin.strip() and origin.strip() != "*"
+        origin.strip()
+        for origin in (value or "").split(",")
+        if origin.strip() and origin.strip() != "*"
     )
     return origins or DEFAULT_ORIGINS
 
