@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 
 import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
+import { API_BASE_URL } from '../../core/config/api-base-url';
 
 export type TextPart = { type: 'text'; text: string; record_ids: string[]; claim_ids: string[] };
 export type SourcePart = { type: 'source'; record_id: string; label: string };
@@ -210,7 +211,7 @@ export class ChatClient {
 
   async checkCompatibility(): Promise<boolean> {
     try {
-      const response = await fetch('/api/v1/metadata');
+      const response = await fetch(`${API_BASE_URL}/api/v1/metadata`);
       if (!response.ok) return false;
       const metadata = (await response.json()) as { content_version?: unknown };
       return metadata.content_version === this.expectedContentVersion;
@@ -224,7 +225,7 @@ export class ChatClient {
     onEvent: (event: ChatEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> {
-    const response = await fetch('/api/v1/chat/stream', {
+    const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ message, locale: 'es', client_request_id: crypto.randomUUID() }),
