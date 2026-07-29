@@ -4,95 +4,120 @@ import {
   Component,
   ElementRef,
   OnDestroy,
+  inject,
   signal,
   viewChild,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
+import { Subscription } from 'rxjs';
 
-const JOURNEY_STEPS = [
-  {
-    heading: 'Conocé mi recorrido',
-    body: 'Podés recorrer las secciones a tu ritmo o usar la navegación para ir directo a un tema.',
-  },
-  {
-    heading: 'Explorá la evidencia',
-    body: 'Cada sección reúne información publicada a partir de material revisado.',
-  },
-  {
-    heading: 'Hacé tu consulta',
-    body: 'Al final podés abrir el chat informativo para consultar sobre el recorrido profesional.',
-  },
-] as const;
+import { ValidatedContentBundle } from '../../core/content/content-validator';
+import { ChatPage } from '../chat/chat-page';
+import { ProjectCard } from '../../shared/project-card/project-card';
+import { RecordCard } from '../../shared/record-card/record-card';
 
 @Component({
   selector: 'app-journey-page',
-  imports: [RouterLink],
+  imports: [ChatPage, ProjectCard, RecordCard],
   styleUrl: './journey-page.css',
   template: `
-    <main id="main-content" class="journey" tabindex="-1">
-      <section class="journey__intro" aria-labelledby="journey-title">
+    <div
+      class="journey"
+      [attr.role]="assistantUnlocked() ? null : 'main'"
+      [attr.id]="assistantUnlocked() ? null : 'main-content'"
+      [attr.tabindex]="assistantUnlocked() ? null : -1"
+    >
+      <section id="intro" class="journey__intro" aria-labelledby="journey-title">
         <p class="journey__eyebrow">Portfolio de Lucas Figueroa</p>
-        <h1 id="journey-title">Un recorrido claro, sin atajos.</h1>
-        <p class="journey__lead">Elegí cómo querés conocer el trabajo y la experiencia.</p>
-        <a class="journey__direct-link" routerLink="/chat">Ir directamente al chat</a>
+        <h1 id="journey-title" tabindex="-1">Un recorrido claro, sin atajos.</h1>
+        <p class="journey__lead">Conocé la experiencia, la evidencia y los proyectos antes del chat.</p>
+        <button data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
       </section>
 
-      <section
-        #journeyStep
-        class="journey__step"
-        [class.is-visible]="isVisible()"
-        aria-labelledby="step-heading"
-      >
-        <p class="journey__status" aria-live="polite">
-          Paso {{ currentStep() + 1 }} de {{ steps.length }}
-        </p>
-        <h2 id="step-heading">{{ steps[currentStep()].heading }}</h2>
-        <p>{{ steps[currentStep()].body }}</p>
-
-        @if (isComplete) {
-          <a class="journey__action" routerLink="/chat">Abrir el chat</a>
-        } @else {
-          <button data-testid="journey-next" type="button" (click)="next()">Continuar</button>
+      <section id="experience" aria-labelledby="experience-title">
+        <h2 id="experience-title" tabindex="-1">Experiencia y formación</h2>
+        @for (record of experienceRecords; track record.id) {
+          <app-record-card [record]="record" eyebrow="Trayectoria" />
+        }
+        @if (progress() >= 1) {
+          <button data-testid="continue-experience" type="button" (click)="advance(2)">Continuar</button>
         }
       </section>
-    </main>
+
+      <section id="projects" aria-labelledby="projects-title">
+        <h2 id="projects-title" tabindex="-1">Proyectos</h2>
+        @for (record of projectRecords; track record.id) {
+          <app-project-card [record]="record" />
+        }
+        @if (progress() >= 2) {
+          <button data-testid="continue-projects" type="button" (click)="advance(3)">Continuar</button>
+        }
+      </section>
+
+      <section id="assistant" #journeyStep class="journey__step" [class.is-visible]="isVisible()">
+        <h2 id="assistant-title" tabindex="-1">Asistente</h2>
+        @if (assistantUnlocked()) {
+          <button data-testid="return-assistant" type="button" (click)="focusFragment('assistant')">
+            Volver al asistente
+          </button>
+          <app-chat-page />
+        } @else if (progress() >= 3) {
+          <p>Completaste el recorrido. Ya podés abrir el chat.</p>
+          <button data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">Abrir el chat</button>
+        } @else {
+          <p>Recorré las secciones anteriores para habilitar el chat.</p>
+        }
+      </section>
+    </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class JourneyPage implements AfterViewInit, OnDestroy {
-  readonly steps = JOURNEY_STEPS;
-  readonly currentStep = signal(0);
+  private readonly route = inject(ActivatedRoute);
+  private readonly content = this.route.snapshot.data['content'] as ValidatedContentBundle | undefined;
+  readonly progress = signal(0);
   readonly isVisible = signal(false);
+  readonly assistantUnlocked = signal(false);
+  readonly experienceRecords = this.content?.portfolio.records.filter((record) => record.kind !== 'project') ?? [];
+  readonly projectRecords = this.content?.portfolio.records.filter((record) => record.kind === 'project') ?? [];
   private readonly journeyStep = viewChild.required<ElementRef<HTMLElement>>('journeyStep');
   private observer: IntersectionObserver | undefined;
+  private fragmentSubscription: Subscription | undefined;
 
-  get isComplete(): boolean {
-    return this.currentStep() === this.steps.length - 1;
+  advance(nextStep: number): void {
+    if (nextStep === this.progress() + 1) this.progress.set(nextStep);
   }
 
-  next(): void {
-    this.currentStep.update((step) => Math.min(step + 1, this.steps.length - 1));
+  unlockAssistant(): void {
+    if (this.progress() === 3) this.assistantUnlocked.set(true);
+  }
+
+  focusFragment(fragment: string): void {
+    const section = document.getElementById(fragment);
+    const heading = section?.querySelector<HTMLElement>('h1, h2');
+    section?.scrollIntoView?.();
+    heading?.focus();
   }
 
   ngAfterViewInit(): void {
+    this.fragmentSubscription = this.route.fragment.subscribe((fragment) => {
+      if (fragment) queueMicrotask(() => this.focusFragment(fragment));
+    });
     if (!('IntersectionObserver' in window)) {
       this.isVisible.set(true);
       return;
     }
-
-    this.observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          this.isVisible.set(true);
-          this.observer?.disconnect();
-        }
-      },
-      { threshold: 0.2 },
-    );
+    this.observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        this.isVisible.set(true);
+        this.observer?.disconnect();
+      }
+    });
     this.observer.observe(this.journeyStep().nativeElement);
   }
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
+    this.fragmentSubscription?.unsubscribe();
   }
 }
