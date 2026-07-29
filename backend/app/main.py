@@ -71,6 +71,18 @@ def _refusal(classification: str) -> dict[str, object]:
     }
 
 
+def _configured_origins(value: str | None) -> tuple[str, ...]:
+    """Read exact CORS origins from an environment value without enabling wildcards."""
+    origins = tuple(
+        origin.strip() for origin in (value or "").split(",") if origin.strip() and origin.strip() != "*"
+    )
+    return origins or DEFAULT_ORIGINS
+
+
+def _configured_preview_origin_regex(value: str | None) -> str:
+    return value if value and "*" not in value else DEFAULT_PREVIEW_ORIGIN_REGEX
+
+
 def _validate_retrieval_references(
     candidate: Mapping[str, object],
     retrieved_record_ids: set[str],
@@ -233,7 +245,13 @@ def _default_app() -> FastAPI:
         )
     except (KeyError, OSError, ValueError):
         return create_app(ready=False)
-    return create_app(bundle=bundle, provider=provider, provider_model=limits.model)
+    return create_app(
+        bundle=bundle,
+        provider=provider,
+        provider_model=limits.model,
+        allowed_origins=_configured_origins(os.getenv("CORS_ALLOWED_ORIGINS")),
+        preview_origin_regex=_configured_preview_origin_regex(os.getenv("CORS_PREVIEW_ORIGIN_REGEX")),
+    )
 
 
 app = _default_app()
