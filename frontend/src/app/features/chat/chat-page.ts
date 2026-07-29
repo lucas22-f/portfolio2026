@@ -50,7 +50,7 @@ import {
       <p class="sr-only" aria-live="polite" aria-atomic="true">{{ state().announcement }}</p>
       @if (compatible() === false) {
         <section class="chat-status" role="alert">
-          <p>El chat no est? disponible temporalmente.</p>
+          <p>El chat no está disponible temporalmente.</p>
         </section>
       } @else if (state().status === 'error' || state().status === 'refused') {
         <section class="chat-status" [attr.role]="state().status === 'error' ? 'alert' : 'status'">
