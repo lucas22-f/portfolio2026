@@ -51,6 +51,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: End-to-End Delivery
 
-- [ ] 5.1 Add mocked Playwright journeys in `frontend/e2e/` for navigation, accessibility, grounded card, refusals/errors, invalid parts, and compatibility disablement.
+- [x] 5.1 Add mocked Playwright journeys in `frontend/e2e/` for navigation, accessibility, grounded card, refusals/errors, invalid parts, and compatibility disablement.
 - [ ] 5.2 Add root-context Vercel configuration for `frontend/` and Railway `backend/Dockerfile` copying `backend/` plus `content/v1`, installing Poetry lock, binding `0.0.0.0:$PORT`, and setting environment-specific API/CORS values.
 - [ ] 5.3 Run scoped then full Vitest/pytest/Playwright, builds, content rehash, health/metadata/NDJSON smoke, compatibility/rollback checks; document commands/secrets in root `README.md`.
