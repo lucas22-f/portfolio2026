@@ -26,6 +26,16 @@ def test_vercel_builds_the_frontend_from_repository_root() -> None:
     assert config["outputDirectory"] == "frontend/dist/frontend/browser"
 
 
+def test_angular_development_build_defines_only_the_local_api_base_url() -> None:
+    config = json.loads((REPOSITORY_ROOT / "frontend" / "angular.json").read_text(encoding="utf-8"))
+    configurations = config["projects"]["frontend"]["architect"]
+
+    assert configurations["build"]["configurations"]["development"]["define"] == {
+        "__API_BASE_URL__": "'http://127.0.0.1:8000'"
+    }
+    assert "define" not in configurations["build"]["configurations"]["production"]
+
+
 def test_railway_dockerfile_packages_backend_and_reviewed_content() -> None:
     railway = json.loads((REPOSITORY_ROOT / "railway.json").read_text(encoding="utf-8"))
     dockerfile = (REPOSITORY_ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
@@ -41,19 +51,14 @@ def test_railway_dockerfile_packages_backend_and_reviewed_content() -> None:
     assert "poetry install --only main --sync --no-interaction" in dockerfile
     assert "COPY backend/app ./app" in dockerfile
     assert "COPY content/v1 /app/content/v1" in dockerfile
-    assert (
-        'CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]'
-        in dockerfile
-    )
+    assert 'CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]' in dockerfile
 
 
 def test_deployment_environment_templates_keep_api_and_cors_values_non_secret() -> None:
     frontend_environment = (REPOSITORY_ROOT / "frontend" / ".env.example").read_text(
         encoding="utf-8"
     )
-    backend_environment = (REPOSITORY_ROOT / "backend" / ".env.example").read_text(
-        encoding="utf-8"
-    )
+    backend_environment = (REPOSITORY_ROOT / "backend" / ".env.example").read_text(encoding="utf-8")
 
     assert "API_BASE_URL=http://localhost:8000" in frontend_environment
     assert (
@@ -75,6 +80,5 @@ def test_cors_origins_accept_only_explicit_environment_values() -> None:
     assert _configured_origins("  ") == DEFAULT_ORIGINS
     assert _configured_origins("*,https://preview.example") == ("https://preview.example",)
     assert (
-        _configured_preview_origin_regex("^https://.*\\.example$")
-        == DEFAULT_PREVIEW_ORIGIN_REGEX
+        _configured_preview_origin_regex("^https://.*\\.example$") == DEFAULT_PREVIEW_ORIGIN_REGEX
     )

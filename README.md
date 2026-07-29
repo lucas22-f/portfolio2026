@@ -44,20 +44,19 @@ The tests use the credential-free `FakeProvider`; do not use production credenti
 
 ## Local API smoke check
 
-`backend/app/main.py` creates an unavailable production app without `OPENAI_API_KEY`. Start this credential-free FakeProvider server instead; it is a local test harness only:
+The development commands run the full local flow with the credential-free `FakeProvider`.
+Production behavior remains unchanged and still requires its configured provider.
 
 ```powershell
 Push-Location backend
-@'
-from pathlib import Path
-import uvicorn
-from app.main import create_app
-from app.domain.content import load_content_bundle
-from app.infrastructure.chat_provider import FakeProvider
+poetry run dev
+```
 
-bundle = load_content_bundle(Path.cwd().parent / "content" / "v1")
-uvicorn.run(create_app(bundle=bundle, provider=FakeProvider(), provider_model="fake"), host="127.0.0.1", port=8000)
-'@ | .\.venv\Scripts\python.exe -
+In another terminal, start the frontend. Its development build points to the local API automatically:
+
+```powershell
+Push-Location frontend
+npm.cmd run start
 ```
 
 In another PowerShell terminal, run the complete smoke sequence:
