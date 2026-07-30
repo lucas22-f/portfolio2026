@@ -13,21 +13,22 @@ async function unlockAssistant(page: Page): Promise<void> {
   await expect(page.getByTestId('chat-heading')).toBeFocused();
 }
 
-test('keeps classic navigation and the guided journey keyboard-accessible', async ({ page }) => {
+test('keeps the guided journey keyboard-accessible without conventional navigation', async ({
+  page,
+}) => {
   await mockChatApi(page, { metadataVersion: CONTENT_VERSION });
   await page.goto('/');
 
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Saltar al contenido principal' })).toBeFocused();
-  await page.getByRole('link', { name: 'Proyectos', exact: true }).click();
-  await expect(page).toHaveURL(/\/#projects$/);
+  await page.goto('/#projects');
   await expect(page.getByRole('heading', { name: 'Proyectos' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Proyectos' })).toBeFocused();
   await expect(page.locator('#projects').getByRole('article')).toHaveCount(3);
 
   await page.goto('/chat');
   await expect(page).toHaveURL(/\/#assistant$/);
-  await expect(page.getByRole('heading', { name: 'Asistente' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'Asistente' })).not.toBeFocused();
   await expect(
     page.getByText('Recorré las secciones anteriores para habilitar el chat.'),
   ).toBeVisible();
@@ -144,8 +145,7 @@ test('disables only chat for incompatible metadata while static pages remain usa
 
   await expect(page.getByRole('alert')).toContainText('El chat no está disponible temporalmente.');
   await expect(page.getByLabel('Tu consulta')).toBeDisabled();
-  await page.getByRole('link', { name: 'Perfil', exact: true }).click();
-  await expect(page).toHaveURL(/\/#intro$/);
+  await page.goto('/#intro');
   await expect(
     page.getByRole('heading', { name: 'Un recorrido claro, sin atajos.' }),
   ).toBeVisible();

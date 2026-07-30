@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  Input,
   inject,
   signal,
   viewChild,
@@ -21,7 +22,7 @@ import {
   selector: 'app-chat-page',
   imports: [FormsModule],
   template: `
-    <main id="main-content" class="chat-page">
+    <section class="chat-page" aria-labelledby="chat-heading">
       <p class="chat-page__eyebrow">Consulta guiada</p>
       <h1 #heading data-testid="chat-heading" tabindex="-1">Chat informativo</h1>
       <p class="chat-page__intro">
@@ -92,12 +93,13 @@ import {
           }
         }
       </section>
-    </main>
+    </section>
   `,
   styleUrl: './chat-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ChatPage implements AfterViewInit {
+  @Input() focusOnEntry = false;
   private readonly client = inject(ChatClient);
   private readonly heading = viewChild.required<ElementRef<HTMLElement>>('heading');
   readonly state = signal<ChatState>(createChatState());
@@ -106,8 +108,12 @@ export class ChatPage implements AfterViewInit {
   private lastMessage = '';
 
   ngAfterViewInit(): void {
-    this.heading().nativeElement.focus();
+    if (this.focusOnEntry) this.focusEntry();
     void this.loadCompatibility();
+  }
+
+  focusEntry(): void {
+    this.heading().nativeElement.focus();
   }
 
   private async loadCompatibility(): Promise<void> {

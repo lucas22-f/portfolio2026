@@ -20,11 +20,13 @@ describe('JourneyPage', () => {
 
     expect(page.querySelectorAll('section[id]')).toHaveLength(4);
     expect(page.querySelector('#intro h1')?.textContent).toContain('Un recorrido claro');
-    expect(page.querySelector('#assistant')?.textContent).toContain('Recorré las secciones anteriores');
+    expect(page.querySelector('#assistant')?.textContent).toContain(
+      'Recorré las secciones anteriores',
+    );
     expect(page.querySelector('app-chat-page')).toBeNull();
   });
 
-  it('moves through the journey in reading order before exposing its terminal chat action', () => {
+  it('moves through the journey in reading order before focusing the intentionally unlocked chat', async () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
 
@@ -41,32 +43,42 @@ describe('JourneyPage', () => {
     expect(unlock?.textContent).toContain('Abrir el chat');
     unlock?.click();
     fixture.detectChanges();
+    await fixture.whenStable();
 
     expect(page.querySelector('app-chat-page')).not.toBeNull();
     expect(page.querySelectorAll('main')).toHaveLength(1);
     expect(page.querySelectorAll('#main-content')).toHaveLength(1);
-    expect(page.querySelector('[data-testid="chat-heading"]')?.textContent).toContain('Chat informativo');
+    expect(page.querySelector('[data-testid="chat-heading"]')?.textContent).toContain(
+      'Chat informativo',
+    );
+    expect(document.activeElement).toBe(page.querySelector('[data-testid="chat-heading"]'));
     expect(page.querySelector('#intro')).not.toBeNull();
     expect(page.querySelector('[data-testid="return-assistant"]')).not.toBeNull();
   });
 
-  it('scrolls and focuses the matching semantic heading for a fragment', () => {
+  it('keeps initial fragment navigation in reading order but focuses later fragment navigation', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
-    const heading = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('#projects-title')!;
+    const heading = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '#projects-title',
+    )!;
     const section = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('#projects')!;
     let scrolled = false;
     section.scrollIntoView = () => {
       scrolled = true;
     };
 
-    fixture.componentInstance.focusFragment('projects');
+    fixture.componentInstance.focusFragment('projects', true);
 
     expect(scrolled).toBe(true);
+    expect(document.activeElement).not.toBe(heading);
+
+    fixture.componentInstance.focusFragment('projects');
+
     expect(document.activeElement).toBe(heading);
   });
 
-  it('reveals guided progress when its scroll landmark enters the viewport', () => {
+  it('reveals the assistant section without unlocking it when its scroll landmark enters the viewport', () => {
     let reveal: (() => void) | undefined;
     const originalObserver = window.IntersectionObserver;
     window.IntersectionObserver = class {
@@ -97,17 +109,18 @@ describe('JourneyPage', () => {
     expect(fixture.nativeElement.querySelector('.journey__step')?.classList).toContain(
       'is-visible',
     );
+    expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
     window.IntersectionObserver = originalObserver;
   });
 });
 
 describe('ChatPage', () => {
-  it('focuses its heading after terminal journey navigation', () => {
+  it('does not focus its heading until an intentional entry request is made', () => {
     TestBed.configureTestingModule({ imports: [ChatPage] });
     const fixture = TestBed.createComponent(ChatPage);
     fixture.detectChanges();
 
-    expect(document.activeElement).toBe(
+    expect(document.activeElement).not.toBe(
       fixture.nativeElement.querySelector('[data-testid="chat-heading"]'),
     );
   });

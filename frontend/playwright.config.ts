@@ -20,6 +20,9 @@ export default defineConfig({
   webServer: {
     command: 'npm run start -- --host 127.0.0.1',
     url: 'http://127.0.0.1:4200',
+    timeout: 60_000,
+    stdout: 'pipe',
+    stderr: 'pipe',
     reuseExistingServer: !process.env['CI'],
   },
 });
