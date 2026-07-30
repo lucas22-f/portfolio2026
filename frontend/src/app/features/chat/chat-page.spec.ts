@@ -4,6 +4,21 @@ import { ChatClient, ChatEvent, ChatStreamError } from './chat-client';
 import { ChatPage } from './chat-page';
 
 describe('ChatPage', () => {
+  it('focuses its accessible entry heading only when focusOnEntry is requested', async () => {
+    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.componentRef.setInput('focusOnEntry', true);
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('[data-testid="chat-heading"]'),
+    );
+  });
+
   it('announces a Spanish grounded response and renders only its text part', async () => {
     const client = {
       checkCompatibility: async () => true,

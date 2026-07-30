@@ -21,10 +21,12 @@ describe('portfolio routes', () => {
     expect(harness.routeNativeElement?.querySelector('#projects app-project-card')).not.toBeNull();
   });
 
-  it('focuses the semantic heading when the landing fragment changes', async () => {
+  it('preserves reading order on entry and focuses subsequent fragment changes', async () => {
     const harness = await RouterTestingHarness.create('/#experience');
     await Promise.resolve();
-    expect(document.activeElement).toBe(harness.routeNativeElement?.querySelector('#experience-title'));
+    expect(document.activeElement).not.toBe(
+      harness.routeNativeElement?.querySelector('#experience-title'),
+    );
 
     await harness.navigateByUrl('/#projects');
     await Promise.resolve();

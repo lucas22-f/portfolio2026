@@ -25,21 +25,13 @@ describe('App', () => {
     expect(compiled.querySelector('router-outlet')).not.toBeNull();
   });
 
-  it('keeps classic navigation available from the guided entry point', () => {
+  it('keeps the skip link and outlet without a conventional header or navigation', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
 
-    const links = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLAnchorElement>('nav a'),
-    );
-
-    expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/perfil',
-      '/experiencia',
-      '/educacion',
-      '/habilidades',
-      '/proyectos',
-      '/chat',
-    ]);
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('.skip-link')?.getAttribute('href')).toBe('#main-content');
+    expect(page.querySelector('header')).toBeNull();
+    expect(page.querySelector('nav')).toBeNull();
   });
 });
