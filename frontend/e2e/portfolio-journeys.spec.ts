@@ -21,7 +21,7 @@ test('keeps the guided journey keyboard-accessible without conventional navigati
 
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: 'Saltar al contenido principal' })).toBeFocused();
-  await page.goto('/#projects');
+  await page.evaluate(() => (window.location.hash = 'projects'));
   await expect(page.getByRole('heading', { name: 'Proyectos' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Proyectos' })).toBeFocused();
   await expect(page.locator('#projects').getByRole('article')).toHaveCount(3);
