@@ -26,6 +26,19 @@ describe('JourneyPage', () => {
     expect(page.querySelector('app-chat-page')).toBeNull();
   });
 
+  it('groups the career narrative by profile, work, education, skills, and certifications', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+
+    const page = fixture.nativeElement as HTMLElement;
+
+    expect(page.querySelector('[data-testid="profile-summary"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="experience-timeline"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="education-list"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="skills-list"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="certifications-list"]')).not.toBeNull();
+  });
+
   it('moves through the journey in reading order before focusing the intentionally unlocked chat', async () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
@@ -54,6 +67,20 @@ describe('JourneyPage', () => {
     expect(document.activeElement).toBe(page.querySelector('[data-testid="chat-heading"]'));
     expect(page.querySelector('#intro')).not.toBeNull();
     expect(page.querySelector('[data-testid="return-assistant"]')).not.toBeNull();
+  });
+
+  it('moves focus to the next narrative section after a Continue action', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(
+      (fixture.nativeElement as HTMLElement).querySelector('#experience-title'),
+    );
   });
 
   it('keeps initial fragment navigation in reading order but focuses later fragment navigation', () => {

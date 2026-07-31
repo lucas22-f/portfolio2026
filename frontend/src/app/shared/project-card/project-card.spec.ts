@@ -40,6 +40,21 @@ describe('ProjectCard', () => {
     expect(card.querySelectorAll('a')).toHaveLength(0);
   });
 
+  it('shows only reviewed technology tags as project evidence', () => {
+    fixture.componentRef.setInput('record', projectWithoutLinks);
+    fixture.detectChanges();
+
+    const tags = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        '[data-testid="project-tech"] li',
+      ) as NodeListOf<HTMLLIElement>,
+    );
+    expect(tags.map((tag) => tag.textContent?.trim())).toEqual(['rag', 'fury']);
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="project-evidence"]')?.textContent,
+    ).toContain('Datos revisados');
+  });
+
   it('renders only explicitly supplied project links', () => {
     fixture.componentRef.setInput('record', {
       ...projectWithoutLinks,

@@ -4,7 +4,7 @@
 
 .journey {
   display: grid;
-  gap: clamp(3rem, 10vw, 7rem);
+  gap: clamp(2.5rem, 7vw, 5rem);
   width: min(100% - 2rem, 72rem);
   margin-inline: auto;
   padding-block: clamp(3.5rem, 10vw, 8rem);
@@ -13,6 +13,10 @@
 .journey__intro,
 .journey__step {
   max-width: 42rem;
+}
+
+.journey__section-heading {
+  max-width: 46rem;
 }
 
 .journey__eyebrow,
@@ -50,6 +54,36 @@ h2 {
   margin-block: 1.25rem 0;
   font-size: clamp(1.05rem, 2vw, 1.3rem);
   line-height: 1.6;
+}
+
+.journey__profile .journey__lead:not(:first-child) {
+  display: none;
+}
+
+.journey__timeline,
+.journey__project-grid {
+  display: grid;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.journey__fact-groups {
+  display: grid;
+  gap: 2rem;
+  margin-top: 2rem;
+}
+
+.journey__fact-group h3 {
+  margin: 0 0 0.75rem;
+  color: var(--color-heading);
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.journey__compact-list {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .journey__step {
@@ -112,6 +146,14 @@ button:hover {
 
   .journey__step {
     margin-left: auto;
+  }
+
+  .journey__fact-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .journey__project-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

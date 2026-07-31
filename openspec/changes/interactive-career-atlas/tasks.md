@@ -39,6 +39,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Admission, visual system, verification
 
-- [ ] 3.1 **RED/setup:** Install/load official Spartan skill (`npx skills add spartan-ng/spartan`), read it, run read-only project info/discovery; document admission against native/Angular Aria semantics, accessibility, and 500 kB/1 MB + 4/8 kB budgets before dependency changes.
-- [ ] 3.2 **GREEN:** Only if admitted, add minimal Spartan Brain Progress/copied Helm styles and `motion`; otherwise use native/CSS fallback. Motion dynamic import must be reduced-motion-gated, decorative-only, and destroyed cleanly.
-- [ ] 3.3 **REFACTOR:** Update `styles.css` semantic navy/emerald tokens, focus/mobile/reduced-motion rules; no global smooth scroll. Run scoped Vitest commands and `npm run build`; reserve Playwright a11y/mobile for `sdd-verify`.
+- [x] 3.1 **RED/setup:** Install/load official Spartan skill (`npx skills add spartan-ng/spartan`), read it, run read-only project info/discovery; document admission against native/Angular Aria semantics, accessibility, and 500 kB/1 MB + 4/8 kB budgets before dependency changes.
+- [x] 3.2 **GREEN:** Only if admitted, add minimal Spartan Brain Progress/copied Helm styles and `motion`; otherwise use native/CSS fallback. Motion dynamic import must be reduced-motion-gated, decorative-only, and destroyed cleanly.
+- [x] 3.3 **REFACTOR:** Update `styles.css` semantic navy/emerald tokens, focus/mobile/reduced-motion rules; no global smooth scroll. Run scoped Vitest commands and `npm run build`; reserve Playwright a11y/mobile for `sdd-verify`.
