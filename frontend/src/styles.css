@@ -12,6 +12,7 @@
   --color-accent: #10b981;
   --color-accent-hover: #34d399;
   --color-accent-subtle: #064e3b;
+  --color-accent-contrast: #042f24;
   --color-ink: var(--color-heading);
   --font-display: 'Outfit', sans-serif;
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
@@ -28,6 +29,11 @@ body {
 :focus-visible {
   outline: 3px solid var(--color-accent);
   outline-offset: 3px;
+}
+
+button,
+a {
+  touch-action: manipulation;
 }
 
 .skip-link {

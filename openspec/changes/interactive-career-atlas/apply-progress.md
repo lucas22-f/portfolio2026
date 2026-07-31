@@ -95,3 +95,41 @@ PR 1 (stacked-to-main): safe routing contract only. Authored code and test chang
 
 - [ ] 1.3 Route-helper cleanup and portfolio-page deletion, explicitly deferred.
 - [ ] 3.1-3.3 Dependency admission and visual-system verification, explicitly deferred.
+
+## PR 3 Visual-System Admission and Narrative Polish
+
+### Dependency Admission
+
+| Candidate                              | Native alternative and accessibility                                                                                                                                     | Budget / discovery evidence                                                                                                                                                                                                                                                                                                                                                                                               | Decision                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Spartan Brain Progress + Helm progress | The journey status is informational; native semantic sections, headings, buttons, and existing Angular Aria foundations already meet the required interaction semantics. | Official skill installed and read. Its required Angular CLI `info` command was run from `frontend/` and failed because `@spartan-ng/cli` is not installed; the repository has no `components.json`. Adding Spartan would introduce both a new runtime primitive and copied Helm source before proving value. Production limits remain initial 500 kB warning / 1 MB error and component styles 4 kB warning / 8 kB error. | Rejected for this slice; no dependency or generated component added. |
+| Motion                                 | Continue/unlock, routing, content, and focus are native Angular state transitions and must not depend on animation.                                                      | Decorative-only motion would add a dependency without a required visual behavior; CSS keeps the reduced-motion fallback and requires no cleanup lifecycle.                                                                                                                                                                                                                                                                | Rejected; no dependency added.                                       |
+
+### Completed Tasks
+
+- [x] 3.1 Loaded the official Spartan guidance skill and completed its read-only discovery.
+- [x] 3.2 Kept the native Angular/CSS implementation because neither Spartan nor Motion passed admission.
+- [x] 3.3 Compressed the narrative hierarchy, made Continue controls move focus to the next section, and added reviewed technology evidence to project cards.
+
+### TDD Cycle Evidence
+
+| Task | Test File                                      | RED                                                                                                                        | GREEN                                              | REFACTOR                                                                |
+| ---- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------- |
+| 3.1  | N/A                                            | N/A: read-only skill/discovery task                                                                                        | N/A                                                | Rejected runtime dependencies before any package change.                |
+| 3.2  | `journey-page.spec.ts`                         | Grouped-career assertion failed before the component separated profile, experience, education, skills, and certifications. | Focused suite passed 7/7 after native composition. | Retained CSS/native semantics rather than adding duplicate primitives.  |
+| 3.3  | `journey-page.spec.ts`, `project-card.spec.ts` | Continue-focus assertion and reviewed-tech evidence assertion failed before implementation.                                | Journey passed 7/7 and ProjectCard passed 3/3.     | Shared cards remain data-driven; no invented project links or outcomes. |
+
+### Work Unit Evidence
+
+| Evidence                                          | Result                                                                                                                                                                                                                                   |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test command and exact result             | `npm.cmd test -- --include=src/app/features/journey/journey-page.spec.ts --watch=false`: exit 0, 1 file / 7 tests. `npm.cmd test -- --include=src/app/shared/project-card/project-card.spec.ts --watch=false`: exit 0, 1 file / 3 tests. |
+| Runtime harness command/scenario and exact result | N/A during apply: Playwright mobile and accessibility walkthrough remains reserved for `sdd-verify`; Continue focus is covered by the focused Angular component test.                                                                    |
+| Rollback boundary                                 | Revert the seven frontend files in this PR 3 slice; this removes hierarchy, project technology evidence, and Continue focus navigation without touching routes, chat behavior, backend, or pending task 1.3.                             |
+| Production build and budget impact                | `npm.cmd run build`: exit 0. Initial total 311.43 kB raw / 81.68 kB estimated transfer; baseline was 307.68 kB raw / 80.98 kB transfer, for +3.75 kB raw / +0.70 kB transfer. The 500 kB warning / 1 MB error initial thresholds remain clear; no any-component-style warning (4 kB) or error (8 kB) was emitted. |
+
+### Scope and Deviations
+
+- Spartan installation created untracked `.agents/` and `skills-lock.json` agent-guidance artifacts at repository root. Existing repository conventions do not track agent skill installations; they are excluded from this work unit and left untouched for the maintainer.
+- No Spartan, Motion, backend, Supabase, Resend, contact persistence, global smooth scrolling, or task 1.3 changes were made.
+- Pending task 1.3 remains intentionally unchecked.

@@ -35,6 +35,37 @@ h2 {
   line-height: 1.65;
 }
 
+.project-card__evidence {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-line);
+}
+
+.project-card__evidence > p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.project-card__tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-card__tech li {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-line);
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
+
 nav {
   display: flex;
   flex-wrap: wrap;

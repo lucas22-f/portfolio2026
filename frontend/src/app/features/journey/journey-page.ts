@@ -25,29 +25,69 @@ import { RecordCard } from '../../shared/record-card/record-card';
       <section id="intro" class="journey__intro" aria-labelledby="journey-title">
         <p class="journey__eyebrow">Portfolio de Lucas Figueroa</p>
         <h1 id="journey-title" tabindex="-1">Un recorrido claro, sin atajos.</h1>
-        <p class="journey__lead">
-          Conocé la experiencia, la evidencia y los proyectos antes del chat.
-        </p>
+        <div class="journey__profile" data-testid="profile-summary">
+          @for (claim of profileRecord?.claims; track claim.claim_id) {
+            <p class="journey__lead">{{ claim.text }}</p>
+          }
+        </div>
         <button data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
       </section>
 
-      <section id="experience" aria-labelledby="experience-title">
-        <h2 id="experience-title" tabindex="-1">Experiencia y formación</h2>
-        @for (record of experienceRecords; track record.id) {
-          <app-record-card [record]="record" eyebrow="Trayectoria" />
-        }
+      <section id="experience" class="journey__experience" aria-labelledby="experience-title">
+        <div class="journey__section-heading">
+          <p class="journey__eyebrow">Trayectoria</p>
+          <h2 id="experience-title" tabindex="-1">
+            Experiencia, formaci&oacute;n y especialidades
+          </h2>
+        </div>
+        <div class="journey__timeline" data-testid="experience-timeline">
+          @for (record of experienceRecords; track record.id) {
+            <app-record-card [record]="record" eyebrow="Experiencia actual" />
+          }
+        </div>
+        <div class="journey__fact-groups">
+          <div class="journey__fact-group">
+            <h3>Formaci&oacute;n</h3>
+            <div class="journey__compact-list" data-testid="education-list">
+              @for (record of educationRecords; track record.id) {
+                <app-record-card [record]="record" eyebrow="UTN" />
+              }
+            </div>
+          </div>
+          <div class="journey__fact-group">
+            <h3>Especialidades</h3>
+            <div class="journey__compact-list" data-testid="skills-list">
+              @for (record of skillRecords; track record.id) {
+                <app-record-card [record]="record" eyebrow="Stack" />
+              }
+            </div>
+          </div>
+          <div class="journey__fact-group">
+            <h3>Certificaciones</h3>
+            <div class="journey__compact-list" data-testid="certifications-list">
+              @for (record of certificationRecords; track record.id) {
+                <app-record-card [record]="record" eyebrow="Certificaci&oacute;n" />
+              }
+            </div>
+          </div>
+        </div>
         @if (progress() >= 1) {
           <button data-testid="continue-experience" type="button" (click)="advance(2)">
-            Continuar
+            Ver proyectos
           </button>
         }
       </section>
 
-      <section id="projects" aria-labelledby="projects-title">
-        <h2 id="projects-title" tabindex="-1">Proyectos</h2>
-        @for (record of projectRecords; track record.id) {
-          <app-project-card [record]="record" />
-        }
+      <section id="projects" class="journey__projects" aria-labelledby="projects-title">
+        <div class="journey__section-heading">
+          <p class="journey__eyebrow">Evidencia</p>
+          <h2 id="projects-title" tabindex="-1">Proyectos en producci&oacute;n</h2>
+        </div>
+        <div class="journey__project-grid">
+          @for (record of projectRecords; track record.id) {
+            <app-project-card [record]="record" />
+          }
+        </div>
         @if (progress() >= 2) {
           <button data-testid="continue-projects" type="button" (click)="advance(3)">
             Continuar
@@ -63,12 +103,12 @@ import { RecordCard } from '../../shared/record-card/record-card';
           </button>
           <app-chat-page [focusOnEntry]="true" />
         } @else if (progress() >= 3) {
-          <p>Completaste el recorrido. Ya podés abrir el chat.</p>
+          <p>Completaste el recorrido. Ya pod&eacute;s abrir el chat.</p>
           <button data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">
             Abrir el chat
           </button>
         } @else {
-          <p>Recorré las secciones anteriores para habilitar el chat.</p>
+          <p>Recorr&eacute; las secciones anteriores para habilitar el chat.</p>
         }
       </section>
     </main>
@@ -82,8 +122,19 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   readonly progress = signal(0);
   readonly isVisible = signal(false);
   readonly assistantUnlocked = signal(false);
+  readonly profileRecord = this.content?.portfolio.records.find(
+    (record) => record.kind === 'profile',
+  );
   readonly experienceRecords =
-    this.content?.portfolio.records.filter((record) => record.kind !== 'project') ?? [];
+    this.content?.portfolio.records.filter((record) => record.kind === 'experience') ?? [];
+  readonly educationRecords =
+    this.content?.portfolio.records.filter(
+      (record) => record.kind === 'education' && !record.tags.includes('certification'),
+    ) ?? [];
+  readonly skillRecords =
+    this.content?.portfolio.records.filter((record) => record.kind === 'skill') ?? [];
+  readonly certificationRecords =
+    this.content?.portfolio.records.filter((record) => record.tags.includes('certification')) ?? [];
   readonly projectRecords =
     this.content?.portfolio.records.filter((record) => record.kind === 'project') ?? [];
   private readonly journeyStep = viewChild.required<ElementRef<HTMLElement>>('journeyStep');
@@ -93,7 +144,10 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private initialFragmentNavigation = true;
 
   advance(nextStep: number): void {
-    if (nextStep === this.progress() + 1) this.progress.set(nextStep);
+    if (nextStep !== this.progress() + 1) return;
+    this.progress.set(nextStep);
+    const nextSection = ['experience', 'projects', 'assistant'][nextStep - 1];
+    if (nextSection) queueMicrotask(() => this.focusFragment(nextSection));
   }
 
   unlockAssistant(): void {

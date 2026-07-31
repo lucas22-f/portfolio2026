@@ -14,6 +14,15 @@ import { PortfolioRecord } from '../../core/content/content-validator';
 
       <p class="project-card__summary">{{ record().project?.summary }}</p>
 
+      <div class="project-card__evidence" data-testid="project-evidence">
+        <p>Datos revisados</p>
+        <ul class="project-card__tech" data-testid="project-tech" aria-label="Tecnologias">
+          @for (tag of record().tags; track tag) {
+            <li>{{ tag }}</li>
+          }
+        </ul>
+      </div>
+
       @if (record().project?.links; as links) {
         <nav aria-label="Enlaces del proyecto">
           @for (link of links; track link.url) {
