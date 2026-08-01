@@ -20,9 +20,7 @@ describe('JourneyPage', () => {
 
     expect(page.querySelectorAll('section[id]')).toHaveLength(4);
     expect(page.querySelector('#intro h1')?.textContent).toContain('Un recorrido claro');
-    expect(page.querySelector('#assistant')?.textContent).toContain(
-      'Recorré las secciones anteriores',
-    );
+    expect(page.querySelector('#assistant')?.textContent).toContain('habilitar el chat');
     expect(page.querySelector('app-chat-page')).toBeNull();
   });
 
@@ -138,6 +136,51 @@ describe('JourneyPage', () => {
     );
     expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
     window.IntersectionObserver = originalObserver;
+  });
+  it('renders the Brain-backed Helm progress state without allowing it to advance the journey', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+    const progress = page.querySelector<HTMLElement>('[data-testid="journey-progress"]')!;
+
+    expect(progress.getAttribute('data-slot')).toBe('progress');
+    expect(progress.getAttribute('aria-valuenow')).toBe('0');
+    expect(progress.getAttribute('aria-valuetext')).toBe('Introducción: 0% completado');
+
+    progress.dispatchEvent(new Event('click'));
+    progress.focus();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.progress()).toBe(0);
+    expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
+  });
+
+  it('maps Continue-only journey states to 0, 25, 50, 75, and 100 percent', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+    const progress = () => page.querySelector<HTMLElement>('[data-testid="journey-progress"]')!;
+
+    expect(fixture.componentInstance.progressPercent()).toBe(0);
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
+    fixture.detectChanges();
+    expect(progress().getAttribute('aria-valuenow')).toBe('25');
+    expect(progress().getAttribute('aria-valuetext')).toContain('Trayectoria');
+
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
+    fixture.detectChanges();
+    expect(progress().getAttribute('aria-valuenow')).toBe('50');
+    expect(progress().getAttribute('aria-valuetext')).toContain('Proyectos');
+
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-projects"]')?.click();
+    fixture.detectChanges();
+    expect(progress().getAttribute('aria-valuenow')).toBe('75');
+    expect(progress().getAttribute('aria-valuetext')).toContain('Asistente listo');
+
+    page.querySelector<HTMLButtonElement>('[data-testid="unlock-assistant"]')?.click();
+    fixture.detectChanges();
+    expect(progress().getAttribute('aria-valuenow')).toBe('100');
+    expect(progress().getAttribute('aria-valuetext')).toContain('Asistente desbloqueado');
   });
 });
 

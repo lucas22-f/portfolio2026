@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   OnDestroy,
   inject,
@@ -11,6 +12,8 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 
+import { HlmProgressImports } from '@spartan-ng/helm/progress';
+
 import { ValidatedContentBundle } from '../../core/content/content-validator';
 import { ChatPage } from '../chat/chat-page';
 import { ProjectCard } from '../../shared/project-card/project-card';
@@ -18,10 +21,20 @@ import { RecordCard } from '../../shared/record-card/record-card';
 
 @Component({
   selector: 'app-journey-page',
-  imports: [ChatPage, ProjectCard, RecordCard],
+  imports: [ChatPage, ProjectCard, RecordCard, HlmProgressImports],
   styleUrl: './journey-page.css',
   template: `
     <main id="main-content" class="journey">
+      <div
+        hlmProgress
+        [value]="progressPercent()"
+        [max]="100"
+        [getValueLabel]="getProgressValueLabel"
+        data-testid="journey-progress"
+        aria-label="Progreso del recorrido"
+      >
+        <div hlmProgressIndicator></div>
+      </div>
       <section id="intro" class="journey__intro" aria-labelledby="journey-title">
         <p class="journey__eyebrow">Portfolio de Lucas Figueroa</p>
         <h1 id="journey-title" tabindex="-1">Un recorrido claro, sin atajos.</h1>
@@ -119,7 +132,19 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly content = this.route.snapshot.data['content'] as
     ValidatedContentBundle | undefined;
-  readonly progress = signal(0);
+    readonly progress = signal<0 | 1 | 2 | 3>(0);
+  readonly progressPercent = computed(() => (this.assistantUnlocked() ? 100 : this.progress() * 25));
+  readonly progressLabel = computed(() => {
+    const labels = [
+      'Introducción: 0% completado',
+      'Trayectoria: 25% completado',
+      'Proyectos: 50% completado',
+      'Asistente listo: 75% completado',
+      'Asistente desbloqueado: 100% completado',
+    ];
+    return labels[this.assistantUnlocked() ? 4 : this.progress()];
+  });
+  readonly getProgressValueLabel = () => this.progressLabel();
   readonly isVisible = signal(false);
   readonly assistantUnlocked = signal(false);
   readonly profileRecord = this.content?.portfolio.records.find(
@@ -143,7 +168,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private fragmentSubscription: Subscription | undefined;
   private initialFragmentNavigation = true;
 
-  advance(nextStep: number): void {
+  advance(nextStep: 1 | 2 | 3): void {
     if (nextStep !== this.progress() + 1) return;
     this.progress.set(nextStep);
     const nextSection = ['experience', 'projects', 'assistant'][nextStep - 1];
@@ -176,7 +201,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
       }
       this.initialFragmentNavigation = false;
     });
-    if (!('IntersectionObserver' in window)) {
+    if (typeof IntersectionObserver !== 'function') {
       this.isVisible.set(true);
       return;
     }
