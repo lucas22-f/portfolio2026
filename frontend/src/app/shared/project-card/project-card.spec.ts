@@ -35,7 +35,7 @@ describe('ProjectCard', () => {
     fixture.detectChanges();
 
     const card = fixture.nativeElement as HTMLElement;
-    expect(card.querySelector('h2')?.textContent?.trim()).toBe('Sistemas RAG sobre Fury');
+    expect(card.querySelector('h3')?.textContent?.trim()).toBe('Sistemas RAG sobre Fury');
     expect(card.textContent).toContain('Fuentes de conocimiento dinámicas y actualizadas.');
     expect(card.querySelectorAll('a')).toHaveLength(0);
   });
@@ -69,5 +69,17 @@ describe('ProjectCard', () => {
     expect(links).toHaveLength(1);
     expect(links[0]?.textContent?.trim()).toBe('Ver repositorio');
     expect(links[0]?.href).toBe('https://github.com/lucas22-f/example');
+  });
+
+  it('uses the Tailwind surface contract for the project card and evidence layout', () => {
+    fixture.componentRef.setInput('record', projectWithoutLinks);
+    fixture.detectChanges();
+    const card = fixture.nativeElement as HTMLElement;
+    const surface = card.querySelector('article')!;
+    const evidence = card.querySelector('[data-testid="project-evidence"]')!;
+
+    expect(surface.classList.contains('h-full')).toBe(true);
+    expect(surface.classList.contains('border-t-primary')).toBe(true);
+    expect(evidence.classList.contains('grid')).toBe(true);
   });
 });

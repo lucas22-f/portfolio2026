@@ -17,6 +17,9 @@ describe('ChatPage', () => {
     expect(document.activeElement).toBe(
       fixture.nativeElement.querySelector('[data-testid="chat-heading"]'),
     );
+    expect(fixture.nativeElement.querySelector('[data-testid="chat-heading"]')?.tagName).toBe(
+      'H3',
+    );
   });
 
   it('announces a Spanish grounded response and renders only its text part', async () => {
@@ -51,7 +54,9 @@ describe('ChatPage', () => {
     expect(page.querySelector('[aria-live="polite"]')?.textContent).toContain(
       'Respuesta completa.',
     );
-    expect(page.querySelector('.chat-response')?.textContent).toContain('Respuesta respaldada.');
+    expect(page.querySelector('[aria-label="Respuesta respaldada"]')?.textContent).toContain(
+      'Respuesta respaldada.',
+    );
     expect(page.querySelector('label[for="chat-message"]')?.textContent).toContain('Tu consulta');
   });
 
@@ -122,5 +127,25 @@ describe('ChatPage', () => {
 
     expect(page.querySelector('[role="alert"]')?.textContent).toContain('chat');
     expect((page.querySelector('textarea') as HTMLTextAreaElement).disabled).toBe(true);
+  });
+
+  it('uses Tailwind controls that preserve the chat input and action touch contract', async () => {
+    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+
+    expect(page.querySelector('section')?.classList.contains('w-[min(100%_-_2rem,_52rem)]')).toBe(
+      true,
+    );
+    expect(page.querySelector('section')?.classList.contains('sm:w-[min(100%_-_4rem,_52rem)]')).toBe(
+      true,
+    );
+    expect(page.querySelector('textarea')?.classList.contains('min-h-28')).toBe(true);
+    expect(page.querySelector('button[type="submit"]')?.classList.contains('min-h-11')).toBe(true);
   });
 });

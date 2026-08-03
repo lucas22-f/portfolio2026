@@ -24,6 +24,20 @@ describe('JourneyPage', () => {
     expect(page.querySelector('app-chat-page')).toBeNull();
   });
 
+  it('uses Tailwind layout and touch-target utilities for the guided journey contract', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+    const main = page.querySelector('#main-content')!;
+    const continueButton = page.querySelector('[data-testid="continue-intro"]')!;
+
+    expect(main.classList.contains('grid')).toBe(true);
+    expect(main.classList.contains('gap-10')).toBe(true);
+    expect(main.classList.contains('w-[min(100%_-_2rem,_72rem)]')).toBe(true);
+    expect(main.classList.contains('sm:w-[min(100%_-_4rem,_72rem)]')).toBe(true);
+    expect(continueButton.classList.contains('min-h-11')).toBe(true);
+  });
+
   it('groups the career narrative by profile, work, education, skills, and certifications', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
@@ -76,6 +90,31 @@ describe('JourneyPage', () => {
       ?.click();
     await fixture.whenStable();
 
+    expect(document.activeElement).toBe(
+      (fixture.nativeElement as HTMLElement).querySelector('#experience-title'),
+    );
+  });
+
+  it('keeps Continue keyboard-activatable and advances the guided journey in reading order', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const continueButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="continue-intro"]',
+    )!;
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+
+    continueButton.dispatchEvent(enter);
+
+    expect(continueButton.tagName).toBe('BUTTON');
+    expect(continueButton.type).toBe('button');
+    expect(continueButton.tabIndex).toBe(0);
+    expect(enter.defaultPrevented).toBe(false);
+
+    // JSDOM does not synthesize the browser's native Enter-to-click default action.
+    continueButton.click();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.progress()).toBe(1);
     expect(document.activeElement).toBe(
       (fixture.nativeElement as HTMLElement).querySelector('#experience-title'),
     );
@@ -136,6 +175,24 @@ describe('JourneyPage', () => {
     );
     expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
     window.IntersectionObserver = originalObserver;
+  });
+
+  it('keeps a relocked deep section recoverable without advancing progress', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+    const intro = page.querySelector<HTMLElement>('#intro')!;
+    let scrolled = false;
+    intro.scrollIntoView = () => {
+      scrolled = true;
+    };
+
+    page.querySelector<HTMLButtonElement>('[data-testid="return-intro"]')?.click();
+
+    expect(scrolled).toBe(true);
+    expect(document.activeElement).toBe(page.querySelector('#journey-title'));
+    expect(fixture.componentInstance.progress()).toBe(0);
+    expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
   });
   it('renders the Brain-backed Helm progress state without allowing it to advance the journey', () => {
     const fixture = TestBed.createComponent(JourneyPage);
