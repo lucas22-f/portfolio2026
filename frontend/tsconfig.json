@@ -15,7 +15,11 @@
     "resolveJsonModule": true,
     "paths": {
       "@spartan-ng/helm/progress": ["./src/app/shared/ui/progress/src/index.ts"],
-      "@spartan-ng/helm/utils": ["./src/app/shared/ui/utils/src/index.ts"]
+      "@spartan-ng/helm/utils": ["./src/app/shared/ui/utils/src/index.ts"],
+      "@spartan-ng/helm/button": ["./src/app/shared/ui/button/src/index.ts"],
+      "@spartan-ng/helm/card": ["./src/app/shared/ui/card/src/index.ts"],
+      "@spartan-ng/helm/badge": ["./src/app/shared/ui/badge/src/index.ts"],
+      "@spartan-ng/helm/separator": ["./src/app/shared/ui/separator/src/index.ts"]
     }
   },
   "angularCompilerOptions": {
