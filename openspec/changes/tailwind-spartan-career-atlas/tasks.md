@@ -31,10 +31,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Utility-First Composition (PR 2)
 
-- [ ] 2.1 **RED:** Add journey/chat/card assertions for initial/return focus, relock, keyboard, and Tailwind utilities; run `npm test -- --include=src/app/features/chat/chat-page.spec.ts --watch=false` separately.
-- [ ] 2.2 **GREEN:** Migrate journey, `shared/{project-card,record-card}/*`, and `features/chat/*` layout/responsive/type/surface/interaction composition to Tailwind v4 utilities; preserve semantics and touch targets.
-- [ ] 2.3 Retain only tokens, pseudo/focus, skip-link, `:host`, assistant reveal, and complex reduced-motion CSS; delete equivalent BEM rules and add no Motion.
-- [ ] 2.4 **REFACTOR:** Rerun the scoped specs; verify no utility is merely decorative over retained equivalent CSS.
+- [x] 2.1 **RED:** Add journey/chat/card assertions for initial/return focus, relock, keyboard, and Tailwind utilities; run `npm test -- --include=src/app/features/chat/chat-page.spec.ts --watch=false` separately.
+- [x] 2.2 **GREEN:** Migrate journey, `shared/{project-card,record-card}/*`, and `features/chat/*` layout/responsive/type/surface/interaction composition to Tailwind v4 utilities; preserve semantics and touch targets.
+- [x] 2.3 Retain only tokens, pseudo/focus, skip-link, `:host`, assistant reveal, and complex reduced-motion CSS; delete equivalent BEM rules and add no Motion.
+- [x] 2.4 **REFACTOR:** Rerun the scoped specs; verify no utility is merely decorative over retained equivalent CSS.
 
 ## Phase 3: Explicit Runtime Verification (PR 3)
 

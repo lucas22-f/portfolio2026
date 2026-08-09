@@ -12,6 +12,7 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 
+import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmProgressImports } from '@spartan-ng/helm/progress';
 
 import { ValidatedContentBundle } from '../../core/content/content-validator';
@@ -21,107 +22,119 @@ import { RecordCard } from '../../shared/record-card/record-card';
 
 @Component({
   selector: 'app-journey-page',
-  imports: [ChatPage, ProjectCard, RecordCard, HlmProgressImports],
+  imports: [ChatPage, ProjectCard, RecordCard, HlmButtonImports, HlmProgressImports],
   styleUrl: './journey-page.css',
   template: `
-    <main id="main-content" class="journey">
+    <main id="main-content" class="mx-auto grid w-[min(100%_-_2rem,_72rem)] gap-10 py-14 sm:w-[min(100%_-_4rem,_72rem)] sm:gap-16 sm:py-24">
       <div
         hlmProgress
         [value]="progressPercent()"
         [max]="100"
         [getValueLabel]="getProgressValueLabel"
-        data-testid="journey-progress"
+        class="sticky top-3 z-10" data-testid="journey-progress"
         aria-label="Progreso del recorrido"
       >
         <div hlmProgressIndicator></div>
       </div>
-      <section id="intro" class="journey__intro" aria-labelledby="journey-title">
-        <p class="journey__eyebrow">Portfolio de Lucas Figueroa</p>
-        <h1 id="journey-title" tabindex="-1">Un recorrido claro, sin atajos.</h1>
-        <div class="journey__profile" data-testid="profile-summary">
+      <section id="intro" class="max-w-2xl" aria-labelledby="journey-title">
+        <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Portfolio de Lucas Figueroa</p>
+        <h1 id="journey-title" tabindex="-1" class="mt-3 max-w-[11ch] font-[var(--font-display)] text-5xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-7xl">Un recorrido claro, sin atajos.</h1>
+        <div class="mt-5 max-w-xl" data-testid="profile-summary">
           @for (claim of profileRecord?.claims; track claim.claim_id) {
-            <p class="journey__lead">{{ claim.text }}</p>
+            <p class="m-0 text-lg leading-relaxed text-[var(--color-text)] sm:text-xl">{{ claim.text }}</p>
           }
         </div>
-        <button data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
+        <button hlmBtn class="mt-7 min-h-11" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
       </section>
 
-      <section id="experience" class="journey__experience" aria-labelledby="experience-title">
-        <div class="journey__section-heading">
-          <p class="journey__eyebrow">Trayectoria</p>
-          <h2 id="experience-title" tabindex="-1">
+      <section id="experience" class="grid gap-8" aria-labelledby="experience-title">
+        <div class="max-w-3xl">
+          <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
+          <h2 id="experience-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">
             Experiencia, formaci&oacute;n y especialidades
           </h2>
         </div>
-        <div class="journey__timeline" data-testid="experience-timeline">
+        <div class="grid gap-4" data-testid="experience-timeline">
           @for (record of experienceRecords; track record.id) {
             <app-record-card [record]="record" eyebrow="Experiencia actual" />
           }
         </div>
-        <div class="journey__fact-groups">
-          <div class="journey__fact-group">
-            <h3>Formaci&oacute;n</h3>
-            <div class="journey__compact-list" data-testid="education-list">
+        <div class="grid gap-8 md:grid-cols-3">
+          <div class="grid gap-3">
+            <h3 class="m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-heading)]">Formaci&oacute;n</h3>
+            <div class="grid gap-3" data-testid="education-list">
               @for (record of educationRecords; track record.id) {
-                <app-record-card [record]="record" eyebrow="UTN" />
+                <app-record-card [record]="record" eyebrow="UTN" [headingLevel]="4" />
               }
             </div>
           </div>
-          <div class="journey__fact-group">
-            <h3>Especialidades</h3>
-            <div class="journey__compact-list" data-testid="skills-list">
+          <div class="grid gap-3">
+            <h3 class="m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-heading)]">Especialidades</h3>
+            <div class="grid gap-3" data-testid="skills-list">
               @for (record of skillRecords; track record.id) {
-                <app-record-card [record]="record" eyebrow="Stack" />
+                <app-record-card [record]="record" eyebrow="Stack" [headingLevel]="4" />
               }
             </div>
           </div>
-          <div class="journey__fact-group">
-            <h3>Certificaciones</h3>
-            <div class="journey__compact-list" data-testid="certifications-list">
+          <div class="grid gap-3">
+            <h3 class="m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-heading)]">Certificaciones</h3>
+            <div class="grid gap-3" data-testid="certifications-list">
               @for (record of certificationRecords; track record.id) {
-                <app-record-card [record]="record" eyebrow="Certificaci&oacute;n" />
+                <app-record-card [record]="record" eyebrow="Certificaci&oacute;n" [headingLevel]="4" />
               }
             </div>
           </div>
         </div>
         @if (progress() >= 1) {
-          <button data-testid="continue-experience" type="button" (click)="advance(2)">
+          <button hlmBtn class="min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
             Ver proyectos
           </button>
         }
       </section>
 
-      <section id="projects" class="journey__projects" aria-labelledby="projects-title">
-        <div class="journey__section-heading">
-          <p class="journey__eyebrow">Evidencia</p>
-          <h2 id="projects-title" tabindex="-1">Proyectos en producci&oacute;n</h2>
+      <section id="projects" class="grid gap-8" aria-labelledby="projects-title">
+        <div class="max-w-3xl">
+          <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Evidencia</p>
+          <h2 id="projects-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Proyectos en producci&oacute;n</h2>
         </div>
-        <div class="journey__project-grid">
+        <div class="grid gap-4 md:grid-cols-3">
           @for (record of projectRecords; track record.id) {
             <app-project-card [record]="record" />
           }
         </div>
         @if (progress() >= 2) {
-          <button data-testid="continue-projects" type="button" (click)="advance(3)">
+          <button hlmBtn class="min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
             Continuar
           </button>
         }
       </section>
 
-      <section id="assistant" #journeyStep class="journey__step" [class.is-visible]="isVisible()">
-        <h2 id="assistant-title" tabindex="-1">Asistente</h2>
+      <section id="assistant" #journeyStep class="journey__step max-w-2xl border-y border-border p-6 sm:ml-auto sm:p-12" [class.is-visible]="isVisible()">
+        <h2 id="assistant-title" tabindex="-1" class="m-0 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Asistente</h2>
         @if (assistantUnlocked()) {
-          <button data-testid="return-assistant" type="button" (click)="navigateToAssistant()">
+          <button hlmBtn variant="outline" class="mt-5 min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">
             Volver al asistente
           </button>
           <app-chat-page [focusOnEntry]="true" />
         } @else if (progress() >= 3) {
           <p>Completaste el recorrido. Ya pod&eacute;s abrir el chat.</p>
-          <button data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">
+          <button hlmBtn class="mt-5 min-h-11" data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">
             Abrir el chat
           </button>
         } @else {
-          <p>Recorr&eacute; las secciones anteriores para habilitar el chat.</p>
+          <p class="mt-5 max-w-xl text-lg leading-relaxed text-[var(--color-text)]">
+            Recorr&eacute; las secciones anteriores para habilitar el chat.
+          </p>
+          <button
+            hlmBtn
+            variant="outline"
+            class="mt-5 min-h-11"
+            data-testid="return-intro"
+            type="button"
+            (click)="focusFragment('intro')"
+          >
+            Volver al inicio
+          </button>
         }
       </section>
     </main>
@@ -182,15 +195,22 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   }
 
   navigateToAssistant(): void {
-    document.getElementById('assistant')?.scrollIntoView?.();
+    this.scrollTo(document.getElementById('assistant'));
     this.chatPage()?.focusEntry();
   }
 
   focusFragment(fragment: string, retainReadingOrder = false): void {
     const section = document.getElementById(fragment);
     const heading = section?.querySelector<HTMLElement>('h1, h2');
-    section?.scrollIntoView?.();
+    this.scrollTo(section);
     if (!retainReadingOrder) heading?.focus();
+  }
+
+  private scrollTo(section: Element | null): void {
+    section?.scrollIntoView?.({
+      behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    });
   }
 
   ngAfterViewInit(): void {
