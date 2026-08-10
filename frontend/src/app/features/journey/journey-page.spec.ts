@@ -31,11 +31,12 @@ describe('JourneyPage', () => {
     const main = page.querySelector('#main-content')!;
     const continueButton = page.querySelector('[data-testid="continue-intro"]')!;
 
-    expect(main.classList.contains('grid')).toBe(true);
-    expect(main.classList.contains('gap-10')).toBe(true);
+    expect(main.classList.contains('grid')).toBe(false);
     expect(main.classList.contains('w-[min(100%_-_2rem,_72rem)]')).toBe(true);
     expect(main.classList.contains('sm:w-[min(100%_-_4rem,_72rem)]')).toBe(true);
     expect(continueButton.classList.contains('min-h-11')).toBe(true);
+    expect(page.querySelector('#intro')?.classList.contains('h-svh')).toBe(true);
+    expect(page.querySelector('#intro')?.classList.contains('overflow-y-auto')).toBe(true);
   });
 
   it('groups the career narrative by profile, work, education, skills, and certifications', () => {
@@ -170,9 +171,7 @@ describe('JourneyPage', () => {
     reveal?.();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.journey__step')?.classList).toContain(
-      'is-visible',
-    );
+    expect(fixture.nativeElement.querySelector('#assistant .opacity-100')).not.toBeNull();
     expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
     window.IntersectionObserver = originalObserver;
   });
@@ -194,50 +193,36 @@ describe('JourneyPage', () => {
     expect(fixture.componentInstance.progress()).toBe(0);
     expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
   });
-  it('renders the Brain-backed Helm progress state without allowing it to advance the journey', () => {
+  it('renders a fixed vertical progress rail whose dots reflect guided progress', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
     const progress = page.querySelector<HTMLElement>('[data-testid="journey-progress"]')!;
 
-    expect(progress.getAttribute('data-slot')).toBe('progress');
-    expect(progress.getAttribute('aria-valuenow')).toBe('0');
-    expect(progress.getAttribute('aria-valuetext')).toBe('Introducción: 0% completado');
-
-    progress.dispatchEvent(new Event('click'));
-    progress.focus();
-    fixture.detectChanges();
-
-    expect(fixture.componentInstance.progress()).toBe(0);
-    expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
+    expect(progress.tagName).toBe('NAV');
+    expect(progress.querySelectorAll('ol > li > a')).toHaveLength(4);
+    expect(progress.querySelector('[aria-current="step"]')?.getAttribute('data-step')).toBe('intro');
   });
 
-  it('maps Continue-only journey states to 0, 25, 50, 75, and 100 percent', () => {
+  it('paints each completed step in the progress rail', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
-    const progress = () => page.querySelector<HTMLElement>('[data-testid="journey-progress"]')!;
+    const activeStep = () =>
+      page.querySelector<HTMLElement>('[data-testid="journey-progress"] [aria-current="step"]');
 
-    expect(fixture.componentInstance.progressPercent()).toBe(0);
+    expect(activeStep()?.getAttribute('data-step')).toBe('intro');
     page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
     fixture.detectChanges();
-    expect(progress().getAttribute('aria-valuenow')).toBe('25');
-    expect(progress().getAttribute('aria-valuetext')).toContain('Trayectoria');
+    expect(activeStep()?.getAttribute('data-step')).toBe('experience');
 
     page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
     fixture.detectChanges();
-    expect(progress().getAttribute('aria-valuenow')).toBe('50');
-    expect(progress().getAttribute('aria-valuetext')).toContain('Proyectos');
+    expect(activeStep()?.getAttribute('data-step')).toBe('projects');
 
     page.querySelector<HTMLButtonElement>('[data-testid="continue-projects"]')?.click();
     fixture.detectChanges();
-    expect(progress().getAttribute('aria-valuenow')).toBe('75');
-    expect(progress().getAttribute('aria-valuetext')).toContain('Asistente listo');
-
-    page.querySelector<HTMLButtonElement>('[data-testid="unlock-assistant"]')?.click();
-    fixture.detectChanges();
-    expect(progress().getAttribute('aria-valuenow')).toBe('100');
-    expect(progress().getAttribute('aria-valuetext')).toContain('Asistente desbloqueado');
+    expect(activeStep()?.getAttribute('data-step')).toBe('assistant');
   });
 });
 

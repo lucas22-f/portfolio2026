@@ -5,22 +5,3 @@
 [data-testid='profile-summary'] p:not(:first-child) {
   display: none;
 }
-
-.journey__step {
-  opacity: 0;
-  transform: translateY(1rem);
-  transition: opacity 360ms ease-out, transform 360ms ease-out;
-}
-
-.journey__step.is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .journey__step {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-}

@@ -2,7 +2,6 @@ import {
   AfterViewInit,
   ChangeDetectionStrategy,
   Component,
-  computed,
   ElementRef,
   OnDestroy,
   inject,
@@ -13,7 +12,6 @@ import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { HlmButtonImports } from '@spartan-ng/helm/button';
-import { HlmProgressImports } from '@spartan-ng/helm/progress';
 
 import { ValidatedContentBundle } from '../../core/content/content-validator';
 import { ChatPage } from '../chat/chat-page';
@@ -22,33 +20,45 @@ import { RecordCard } from '../../shared/record-card/record-card';
 
 @Component({
   selector: 'app-journey-page',
-  imports: [ChatPage, ProjectCard, RecordCard, HlmButtonImports, HlmProgressImports],
+  imports: [ChatPage, ProjectCard, RecordCard, HlmButtonImports],
   styleUrl: './journey-page.css',
   template: `
-    <main id="main-content" class="mx-auto grid w-[min(100%_-_2rem,_72rem)] gap-10 py-14 sm:w-[min(100%_-_4rem,_72rem)] sm:gap-16 sm:py-24">
-      <div
-        hlmProgress
-        [value]="progressPercent()"
-        [max]="100"
-        [getValueLabel]="getProgressValueLabel"
-        class="sticky top-3 z-10" data-testid="journey-progress"
-        aria-label="Progreso del recorrido"
-      >
-        <div hlmProgressIndicator></div>
-      </div>
-      <section id="intro" class="max-w-2xl" aria-labelledby="journey-title">
-        <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Portfolio de Lucas Figueroa</p>
-        <h1 id="journey-title" tabindex="-1" class="mt-3 max-w-[11ch] font-[var(--font-display)] text-5xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-7xl">Un recorrido claro, sin atajos.</h1>
-        <div class="mt-5 max-w-xl" data-testid="profile-summary">
-          @for (claim of profileRecord?.claims; track claim.claim_id) {
-            <p class="m-0 text-lg leading-relaxed text-[var(--color-text)] sm:text-xl">{{ claim.text }}</p>
+    <main id="main-content" class="mx-auto w-[min(100%_-_2rem,_72rem)] sm:w-[min(100%_-_4rem,_72rem)]">
+      <nav class="sr-only sm:not-sr-only sm:fixed sm:top-1/2 sm:right-8 sm:z-10 sm:-translate-y-1/2" aria-label="Progreso del recorrido" data-testid="journey-progress">
+        <ol class="grid gap-3">
+          @for (step of journeySteps; track step.id; let index = $index) {
+            <li>
+              <a
+                class="block size-2.5 rounded-full border border-primary bg-background transition-[background-color,transform] duration-200 ease-out hover:scale-110 focus-visible:scale-110"
+                [class.bg-primary]="progress() >= index"
+                [class.scale-110]="progress() >= index"
+                [attr.data-step]="step.id"
+                [attr.href]="'#' + step.id"
+                [attr.aria-label]="'Ir a ' + step.label"
+                [attr.aria-current]="progress() === index ? 'step' : null"
+              ></a>
+            </li>
           }
+        </ol>
+      </nav>
+      <section id="intro" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="journey-title">
+        <div class="grid min-h-full content-center py-8 sm:py-12">
+          <div class="max-w-2xl">
+            <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Portfolio de Lucas Figueroa</p>
+            <h1 id="journey-title" tabindex="-1" class="mt-3 max-w-[11ch] font-[var(--font-display)] text-5xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-7xl">Un recorrido claro, sin atajos.</h1>
+            <div class="mt-5 max-w-xl" data-testid="profile-summary">
+              @for (claim of profileRecord?.claims; track claim.claim_id) {
+                <p class="m-0 text-lg leading-relaxed text-[var(--color-text)] sm:text-xl">{{ claim.text }}</p>
+              }
+            </div>
+            <button hlmBtn class="mt-7 min-h-11" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
+          </div>
         </div>
-        <button hlmBtn class="mt-7 min-h-11" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
       </section>
 
-      <section id="experience" class="grid gap-8" aria-labelledby="experience-title">
-        <div class="max-w-3xl">
+      <section id="experience" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="experience-title">
+        <div class="grid min-h-full content-center gap-8 py-8 sm:py-12">
+          <div class="max-w-3xl">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
           <h2 id="experience-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">
             Experiencia, formaci&oacute;n y especialidades
@@ -85,15 +95,17 @@ import { RecordCard } from '../../shared/record-card/record-card';
             </div>
           </div>
         </div>
-        @if (progress() >= 1) {
-          <button hlmBtn class="min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
-            Ver proyectos
-          </button>
-        }
+          @if (progress() >= 1) {
+            <button hlmBtn class="min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
+              Ver proyectos
+            </button>
+          }
+        </div>
       </section>
 
-      <section id="projects" class="grid gap-8" aria-labelledby="projects-title">
-        <div class="max-w-3xl">
+      <section id="projects" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="projects-title">
+        <div class="grid min-h-full content-center gap-8 py-8 sm:py-12">
+          <div class="max-w-3xl">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Evidencia</p>
           <h2 id="projects-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Proyectos en producci&oacute;n</h2>
         </div>
@@ -102,15 +114,18 @@ import { RecordCard } from '../../shared/record-card/record-card';
             <app-project-card [record]="record" />
           }
         </div>
-        @if (progress() >= 2) {
-          <button hlmBtn class="min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
-            Continuar
-          </button>
-        }
+          @if (progress() >= 2) {
+            <button hlmBtn class="min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
+              Continuar
+            </button>
+          }
+        </div>
       </section>
 
-      <section id="assistant" #journeyStep class="journey__step max-w-2xl border-y border-border p-6 sm:ml-auto sm:p-12" [class.is-visible]="isVisible()">
-        <h2 id="assistant-title" tabindex="-1" class="m-0 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Asistente</h2>
+      <section id="assistant" #journeyStep class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="assistant-title">
+        <div class="grid min-h-full content-center py-8 sm:py-12">
+          <div class="max-w-2xl border-y border-border p-6 opacity-0 translate-y-4 transition-[opacity,transform] duration-300 ease-out sm:ml-auto sm:p-12 motion-reduce:translate-y-0 motion-reduce:transition-none" [class.opacity-100]="isVisible()" [class.translate-y-0]="isVisible()">
+            <h2 id="assistant-title" tabindex="-1" class="m-0 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Asistente</h2>
         @if (assistantUnlocked()) {
           <button hlmBtn variant="outline" class="mt-5 min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">
             Volver al asistente
@@ -135,7 +150,9 @@ import { RecordCard } from '../../shared/record-card/record-card';
           >
             Volver al inicio
           </button>
-        }
+          }
+          </div>
+        </div>
       </section>
     </main>
   `,
@@ -145,19 +162,13 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly content = this.route.snapshot.data['content'] as
     ValidatedContentBundle | undefined;
-    readonly progress = signal<0 | 1 | 2 | 3>(0);
-  readonly progressPercent = computed(() => (this.assistantUnlocked() ? 100 : this.progress() * 25));
-  readonly progressLabel = computed(() => {
-    const labels = [
-      'Introducción: 0% completado',
-      'Trayectoria: 25% completado',
-      'Proyectos: 50% completado',
-      'Asistente listo: 75% completado',
-      'Asistente desbloqueado: 100% completado',
-    ];
-    return labels[this.assistantUnlocked() ? 4 : this.progress()];
-  });
-  readonly getProgressValueLabel = () => this.progressLabel();
+  readonly progress = signal<0 | 1 | 2 | 3>(0);
+  readonly journeySteps = [
+    { id: 'intro', label: 'Introducci\u00f3n' },
+    { id: 'experience', label: 'Trayectoria' },
+    { id: 'projects', label: 'Proyectos' },
+    { id: 'assistant', label: 'Asistente' },
+  ] as const;
   readonly isVisible = signal(false);
   readonly assistantUnlocked = signal(false);
   readonly profileRecord = this.content?.portfolio.records.find(
@@ -203,7 +214,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     const section = document.getElementById(fragment);
     const heading = section?.querySelector<HTMLElement>('h1, h2');
     this.scrollTo(section);
-    if (!retainReadingOrder) heading?.focus();
+    if (!retainReadingOrder) heading?.focus({ preventScroll: true });
   }
 
   private scrollTo(section: Element | null): void {
