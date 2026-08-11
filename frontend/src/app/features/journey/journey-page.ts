@@ -347,12 +347,13 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
       }
       this.initialFragmentNavigation = false;
     });
-    if (typeof IntersectionObserver !== 'function') {
+    const IntersectionObserverConstructor = window.IntersectionObserver;
+    if (typeof IntersectionObserverConstructor !== 'function') {
       this.isVisible.set(true);
       this.experienceVisible.set(true);
       return;
     }
-    this.observer = new IntersectionObserver((entries) => {
+    this.observer = new IntersectionObserverConstructor((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         if (entry.target === this.journeyStep().nativeElement) this.isVisible.set(true);

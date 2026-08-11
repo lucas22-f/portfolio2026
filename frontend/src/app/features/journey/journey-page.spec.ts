@@ -216,22 +216,15 @@ describe('JourneyPage', () => {
   });
 
   it('reveals the assistant section without unlocking it when its scroll landmark enters the viewport', () => {
-    let reveal: (() => void) | undefined;
-    const observed: Element[] = [];
     const originalObserver = window.IntersectionObserver;
-    window.IntersectionObserver = class {
+    class IntersectionObserverMock {
       constructor(callback: IntersectionObserverCallback) {
-        reveal = () =>
-          callback(
-            [{ isIntersecting: true, target: observed[0] } as IntersectionObserverEntry],
-            this as unknown as IntersectionObserver,
-          );
+        this.callback = callback;
       }
 
+      private readonly callback: IntersectionObserverCallback;
       disconnect(): void {}
-      observe(target: Element): void {
-        observed.push(target);
-      }
+      observe(_target: Element): void {}
       takeRecords(): IntersectionObserverEntry[] {
         return [];
       }
@@ -239,11 +232,21 @@ describe('JourneyPage', () => {
       root = null;
       rootMargin = '';
       thresholds = [];
-    } as unknown as typeof IntersectionObserver;
+
+      reveal(target: Element): void {
+        this.callback(
+          [{ isIntersecting: true, target } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        );
+      }
+    }
+    window.IntersectionObserver = IntersectionObserverMock as unknown as typeof IntersectionObserver;
 
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
-    reveal?.();
+    const assistant = fixture.nativeElement.querySelector('#assistant') as Element;
+    const observer = (fixture.componentInstance as unknown as { observer: IntersectionObserverMock }).observer;
+    observer.reveal(assistant);
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('#assistant .opacity-100')).not.toBeNull();

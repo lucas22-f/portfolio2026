@@ -17,7 +17,9 @@ describe('portfolio routes', () => {
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent?.trim()).toBe(
       'Un recorrido claro, sin atajos.',
     );
-    expect(harness.routeNativeElement?.querySelector('#experience app-record-card')).not.toBeNull();
+    expect(
+      harness.routeNativeElement?.querySelector('#experience [data-testid="experience-timeline"] article[hlmCard]'),
+    ).not.toBeNull();
     expect(harness.routeNativeElement?.querySelector('#projects app-project-card')).not.toBeNull();
   });
 
