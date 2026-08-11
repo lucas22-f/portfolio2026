@@ -11,16 +11,27 @@ import {
 import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 
+import { HlmBadgeImports } from '@spartan-ng/helm/badge';
 import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmCardImports } from '@spartan-ng/helm/card';
+import { HlmCarouselImports } from '@spartan-ng/helm/carousel';
+import { HlmSeparatorImports } from '@spartan-ng/helm/separator';
 
 import { ValidatedContentBundle } from '../../core/content/content-validator';
 import { ChatPage } from '../chat/chat-page';
 import { ProjectCard } from '../../shared/project-card/project-card';
-import { RecordCard } from '../../shared/record-card/record-card';
 
 @Component({
   selector: 'app-journey-page',
-  imports: [ChatPage, ProjectCard, RecordCard, HlmButtonImports],
+  imports: [
+    ChatPage,
+    ProjectCard,
+    HlmBadgeImports,
+    HlmButtonImports,
+    HlmCardImports,
+    HlmCarouselImports,
+    HlmSeparatorImports,
+  ],
   styleUrl: './journey-page.css',
   template: `
     <main id="main-content" class="mx-auto w-[min(100%_-_2rem,_72rem)] sm:w-[min(100%_-_4rem,_72rem)]">
@@ -56,45 +67,84 @@ import { RecordCard } from '../../shared/record-card/record-card';
         </div>
       </section>
 
-      <section id="experience" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="experience-title">
-        <div class="grid min-h-full content-center gap-8 py-8 sm:py-12">
+      <section id="experience" #experienceStep class="h-svh overflow-hidden scroll-mt-0" aria-labelledby="experience-title">
+        <div class="grid h-full content-center gap-3 py-4 sm:gap-6 sm:py-10">
           <div class="max-w-3xl">
-          <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
-          <h2 id="experience-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">
-            Experiencia, formaci&oacute;n y especialidades
-          </h2>
-        </div>
-        <div class="grid gap-4" data-testid="experience-timeline">
-          @for (record of experienceRecords; track record.id) {
-            <app-record-card [record]="record" eyebrow="Experiencia actual" />
+            <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
+            <h2 id="experience-title" tabindex="-1" class="mt-2 font-[var(--font-display)] text-3xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:mt-3 sm:text-6xl">
+              Construir sistemas que llegan a producci&oacute;n.
+            </h2>
+          </div>
+
+          <div data-testid="experience-timeline">
+          @if (experienceRecords[0]; as experience) {
+            <article
+              hlmCard
+              class="border-l-4 border-l-primary bg-card text-card-foreground opacity-0 translate-y-3 transition-[opacity,transform] duration-500 ease-out motion-reduce:translate-y-0 motion-reduce:transition-none"
+              [class.opacity-100]="experienceVisible()"
+              [class.translate-y-0]="experienceVisible()"
+            >
+              <header hlmCardHeader>
+                <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">Experiencia actual</p>
+                  <p class="m-0 text-sm text-muted-foreground">Jun. 2025 &mdash; actualidad</p>
+                </div>
+                <h3 hlmCardTitle class="font-[var(--font-display)] text-xl tracking-[-0.03em] text-[var(--color-ink)] sm:text-3xl">
+                  {{ experience.title }}
+                </h3>
+              </header>
+
+              <div hlmCardContent class="grid gap-3">
+                <p class="m-0 text-xs leading-relaxed text-muted-foreground sm:text-base">
+                  Desarrollo remoto de soluciones conversacionales para equipos de Mercado Libre en la regi&oacute;n.
+                </p>
+                <div hlmSeparator></div>
+                <ul class="m-0 grid list-none gap-2 p-0 text-xs leading-relaxed text-[var(--color-text)] sm:grid-cols-3 sm:text-sm">
+                  <li class="border-l border-border pl-3">Workflows de bots internos y automatizaci&oacute;n.</li>
+                  <li class="border-l border-border pl-3">Code Actions con APIs de RRHH y SAP SuccessFactors.</li>
+                  <li class="border-l border-border pl-3">Pipelines de datos e IA sobre Fury.</li>
+                </ul>
+                <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Tecnolog&iacute;as y &aacute;reas de experiencia">
+                  @for (tag of experienceTags; track tag) {
+                    <li hlmBadge variant="outline">{{ tag }}</li>
+                  }
+                </ul>
+              </div>
+            </article>
           }
-        </div>
-        <div class="grid gap-8 md:grid-cols-3">
-          <div class="grid gap-3">
-            <h3 class="m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-heading)]">Formaci&oacute;n</h3>
-            <div class="grid gap-3" data-testid="education-list">
+          </div>
+
+          <div class="grid gap-2 text-xs leading-relaxed text-muted-foreground sm:hidden">
+            <p class="m-0" data-testid="education-list"><span class="font-semibold text-[var(--color-text)]">Formaci&oacute;n:</span> T&eacute;cnico Universitario en Programaci&oacute;n y Desarrollo Web Full Stack (MERN).</p>
+            <p class="m-0" data-testid="certifications-list"><span class="font-semibold text-[var(--color-text)]">Credenciales:</span> 4 certificaciones en desarrollo web, prompting y automatizaci&oacute;n.</p>
+          </div>
+
+          <div class="hidden gap-4 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:items-start">
+            <div class="grid gap-2" data-testid="education-list">
+              <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">Formaci&oacute;n</p>
               @for (record of educationRecords; track record.id) {
-                <app-record-card [record]="record" eyebrow="UTN" [headingLevel]="4" />
+                <p class="m-0 text-sm leading-snug text-[var(--color-text)]">{{ record.title }}</p>
               }
             </div>
-          </div>
-          <div class="grid gap-3">
-            <h3 class="m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-heading)]">Especialidades</h3>
-            <div class="grid gap-3" data-testid="skills-list">
-              @for (record of skillRecords; track record.id) {
-                <app-record-card [record]="record" eyebrow="Stack" [headingLevel]="4" />
-              }
+            <div class="grid gap-2">
+              <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">Especialidades</p>
+              <ul class="m-0 flex list-none flex-wrap gap-2 p-0" data-testid="skills-list" aria-label="Especialidades">
+                @for (record of skillRecords; track record.id) {
+                  <li hlmBadge variant="secondary">{{ record.title }}</li>
+                }
+              </ul>
             </div>
           </div>
-          <div class="grid gap-3">
-            <h3 class="m-0 text-sm font-bold uppercase tracking-[0.08em] text-[var(--color-heading)]">Certificaciones</h3>
-            <div class="grid gap-3" data-testid="certifications-list">
+
+          <div class="hidden gap-2 sm:grid" data-testid="certifications-list">
+            <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">Certificaciones</p>
+            <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Certificaciones">
               @for (record of certificationRecords; track record.id) {
-                <app-record-card [record]="record" eyebrow="Certificaci&oacute;n" [headingLevel]="4" />
+                <li hlmBadge variant="outline">{{ record.title }}</li>
               }
-            </div>
+            </ul>
           </div>
-        </div>
+
           @if (progress() >= 1) {
             <button hlmBtn class="min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
               Ver proyectos
@@ -104,16 +154,54 @@ import { RecordCard } from '../../shared/record-card/record-card';
       </section>
 
       <section id="projects" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="projects-title">
-        <div class="grid min-h-full content-center gap-8 py-8 sm:py-12">
+        <div class="grid min-h-full content-center gap-6 py-8 sm:gap-8 sm:py-12">
           <div class="max-w-3xl">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Evidencia</p>
           <h2 id="projects-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Proyectos en producci&oacute;n</h2>
         </div>
-        <div class="grid gap-4 md:grid-cols-3">
-          @for (record of projectRecords; track record.id) {
-            <app-project-card [record]="record" />
-          }
-        </div>
+        <hlm-carousel
+          #projectCarousel
+          class="block w-full max-w-full overflow-hidden motion-safe:transition-opacity motion-safe:duration-500"
+          [options]="projectCarouselOptions"
+          aria-label="Proyectos destacados"
+          data-testid="projects-carousel"
+        >
+          <div hlmCarouselContent>
+            @for (record of projectRecords; track record.id) {
+              <div hlmCarouselItem class="basis-full">
+                <app-project-card [record]="record" />
+              </div>
+            }
+          </div>
+
+          <div class="mt-4 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2" aria-label="Controles del carrusel de proyectos">
+              <button
+                hlmBtn
+                variant="outline"
+                size="sm"
+                type="button"
+                aria-label="Proyecto anterior"
+                data-testid="projects-previous"
+                (click)="projectCarousel.scrollPrev()"
+              >
+                Anterior
+              </button>
+              <button
+                hlmBtn
+                variant="outline"
+                size="sm"
+                type="button"
+                aria-label="Proyecto siguiente"
+                data-testid="projects-next"
+                (click)="projectCarousel.scrollNext()"
+              >
+                Siguiente
+              </button>
+            </div>
+            <hlm-carousel-slide-display label="Proyecto" slideClass="font-mono text-xs text-muted-foreground" data-testid="projects-position" />
+          </div>
+        </hlm-carousel>
           @if (progress() >= 2) {
             <button hlmBtn class="min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
               Continuar
@@ -170,6 +258,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     { id: 'assistant', label: 'Asistente' },
   ] as const;
   readonly isVisible = signal(false);
+  readonly experienceVisible = signal(false);
   readonly assistantUnlocked = signal(false);
   readonly profileRecord = this.content?.portfolio.records.find(
     (record) => record.kind === 'profile',
@@ -184,9 +273,16 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     this.content?.portfolio.records.filter((record) => record.kind === 'skill') ?? [];
   readonly certificationRecords =
     this.content?.portfolio.records.filter((record) => record.tags.includes('certification')) ?? [];
+  readonly experienceTags = ['Botmaker', 'Node.js', 'Python', 'BigQuery', 'RAG', 'MCP', 'Fury'];
   readonly projectRecords =
     this.content?.portfolio.records.filter((record) => record.kind === 'project') ?? [];
+  readonly projectCarouselOptions = {
+    align: 'start' as const,
+    containScroll: 'trimSnaps' as const,
+    duration: 28,
+  };
   private readonly journeyStep = viewChild.required<ElementRef<HTMLElement>>('journeyStep');
+  private readonly experienceStep = viewChild.required<ElementRef<HTMLElement>>('experienceStep');
   private readonly chatPage = viewChild(ChatPage);
   private observer: IntersectionObserver | undefined;
   private fragmentSubscription: Subscription | undefined;
@@ -234,15 +330,19 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     });
     if (typeof IntersectionObserver !== 'function') {
       this.isVisible.set(true);
+      this.experienceVisible.set(true);
       return;
     }
     this.observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        this.isVisible.set(true);
-        this.observer?.disconnect();
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        if (entry.target === this.journeyStep().nativeElement) this.isVisible.set(true);
+        if (entry.target === this.experienceStep().nativeElement) this.experienceVisible.set(true);
       }
-    });
+      if (this.isVisible() && this.experienceVisible()) this.observer?.disconnect();
+    }, { threshold: 0.2 });
     this.observer.observe(this.journeyStep().nativeElement);
+    this.observer.observe(this.experienceStep().nativeElement);
   }
 
   ngOnDestroy(): void {

@@ -37,6 +37,9 @@ describe('JourneyPage', () => {
     expect(continueButton.classList.contains('min-h-11')).toBe(true);
     expect(page.querySelector('#intro')?.classList.contains('h-svh')).toBe(true);
     expect(page.querySelector('#intro')?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(page.querySelector('#experience')?.classList.contains('h-svh')).toBe(true);
+    expect(page.querySelector('#experience')?.classList.contains('overflow-y-auto')).toBe(false);
+    expect(page.querySelector('#experience')?.classList.contains('overflow-hidden')).toBe(true);
   });
 
   it('groups the career narrative by profile, work, education, skills, and certifications', () => {
@@ -50,6 +53,25 @@ describe('JourneyPage', () => {
     expect(page.querySelector('[data-testid="education-list"]')).not.toBeNull();
     expect(page.querySelector('[data-testid="skills-list"]')).not.toBeNull();
     expect(page.querySelector('[data-testid="certifications-list"]')).not.toBeNull();
+  });
+
+  it('presents projects through a manually controlled Spartan carousel', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+
+    const page = fixture.nativeElement as HTMLElement;
+    const carousel = page.querySelector<HTMLElement>('[data-testid="projects-carousel"]')!;
+    const previous = page.querySelector<HTMLButtonElement>('[data-testid="projects-previous"]')!;
+    const next = page.querySelector<HTMLButtonElement>('[data-testid="projects-next"]')!;
+
+    expect(carousel.tagName).toBe('HLM-CAROUSEL');
+    expect(carousel.getAttribute('aria-label')).toBe('Proyectos destacados');
+    expect(carousel.querySelectorAll('[hlmCarouselItem]')).toHaveLength(
+      fixture.componentInstance.projectRecords.length,
+    );
+    expect(previous.type).toBe('button');
+    expect(next.type).toBe('button');
+    expect(page.querySelector('[data-testid="projects-position"]')).not.toBeNull();
   });
 
   it('moves through the journey in reading order before focusing the intentionally unlocked chat', async () => {
@@ -145,18 +167,21 @@ describe('JourneyPage', () => {
 
   it('reveals the assistant section without unlocking it when its scroll landmark enters the viewport', () => {
     let reveal: (() => void) | undefined;
+    const observed: Element[] = [];
     const originalObserver = window.IntersectionObserver;
     window.IntersectionObserver = class {
       constructor(callback: IntersectionObserverCallback) {
         reveal = () =>
           callback(
-            [{ isIntersecting: true } as IntersectionObserverEntry],
+            [{ isIntersecting: true, target: observed[0] } as IntersectionObserverEntry],
             this as unknown as IntersectionObserver,
           );
       }
 
       disconnect(): void {}
-      observe(): void {}
+      observe(target: Element): void {
+        observed.push(target);
+      }
       takeRecords(): IntersectionObserverEntry[] {
         return [];
       }
