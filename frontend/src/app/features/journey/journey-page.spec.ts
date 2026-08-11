@@ -104,6 +104,56 @@ describe('JourneyPage', () => {
     expect(page.querySelector('[data-testid="return-assistant"]')).not.toBeNull();
   });
 
+  it('resets a completed journey with smooth scrolling and returns focus to the intro', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+    const intro = page.querySelector<HTMLElement>('#intro')!;
+    const scrollCalls: ScrollIntoViewOptions[] = [];
+    intro.scrollIntoView = (options?: ScrollIntoViewOptions) => {
+      scrollCalls.push(options ?? {});
+    };
+
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-projects"]')?.click();
+    fixture.detectChanges();
+
+    const reset = page.querySelector<HTMLButtonElement>('[data-testid="reset-journey"]')!;
+    expect(reset.type).toBe('button');
+    expect(reset.tabIndex).toBe(0);
+
+    reset.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.progress()).toBe(0);
+    expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
+    expect(scrollCalls.at(-1)).toEqual({ behavior: 'smooth', block: 'start' });
+    expect(document.activeElement).toBe(page.querySelector('#journey-title'));
+    expect(page.querySelector('[data-testid="reset-journey"]')).toBeNull();
+  });
+
+  it('keeps the reset control available after the assistant has been unlocked', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-projects"]')?.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="unlock-assistant"]')?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(page.querySelector('[data-testid="reset-journey"]')).not.toBeNull();
+  });
+
   it('moves focus to the next narrative section after a Continue action', async () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();

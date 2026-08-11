@@ -239,6 +239,18 @@ import { ProjectCard } from '../../shared/project-card/project-card';
             Volver al inicio
           </button>
           }
+          @if (progress() === 3) {
+            <button
+              hlmBtn
+              variant="outline"
+              class="mt-4 min-h-11"
+              data-testid="reset-journey"
+              type="button"
+              (click)="resetJourney()"
+            >
+              Reiniciar recorrido
+            </button>
+          }
           </div>
         </div>
       </section>
@@ -299,6 +311,13 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     if (this.progress() !== 3) return;
     this.assistantUnlocked.set(true);
     queueMicrotask(() => this.navigateToAssistant());
+  }
+
+  resetJourney(): void {
+    if (this.progress() !== 3) return;
+    this.assistantUnlocked.set(false);
+    this.progress.set(0);
+    queueMicrotask(() => this.focusFragment('intro'));
   }
 
   navigateToAssistant(): void {
