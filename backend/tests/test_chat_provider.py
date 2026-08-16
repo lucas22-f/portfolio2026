@@ -95,6 +95,52 @@ def test_openai_provider_posts_only_controlled_payload_and_returns_candidates() 
     }
 
 
+def test_openai_provider_finds_output_text_after_reasoning_item() -> None:
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        return 200, json.dumps(
+            {
+                "output": [
+                    {"type": "reasoning", "summary": []},
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": '[{"type":"source","record_id":"project"}]',
+                            }
+                        ],
+                    },
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 3},
+            }
+        ).encode()
+
+    provider = OpenAIChatProvider(api_key="test-secret", transport=transport)
+
+    assert provider.generate([], {}) == [{"type": "source", "record_id": "project"}]
+
+
+def test_openai_provider_rejects_response_without_output_text() -> None:
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        return 200, json.dumps(
+            {
+                "output": [
+                    {"type": "reasoning", "summary": []},
+                    {"type": "message", "content": [{"type": "refusal", "refusal": "No"}]},
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 3},
+            }
+        ).encode()
+
+    provider = OpenAIChatProvider(api_key="test-secret", transport=transport)
+
+    with pytest.raises(ProviderFailure) as error:
+        provider.generate([], {})
+
+    assert error.value.code == "invalid-provider-output"
+    assert error.value.retryable is False
+
+
 def test_openai_provider_requests_spanish_grounded_structured_candidate_parts() -> None:
     received: dict[str, Any] = {}
 
