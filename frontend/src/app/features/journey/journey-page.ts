@@ -35,6 +35,26 @@ import { ProjectCard } from '../../shared/project-card/project-card';
   styleUrl: './journey-page.css',
   template: `
     <main id="main-content" class="mx-auto w-[min(100%_-_2rem,_72rem)] sm:w-[min(100%_-_4rem,_72rem)]">
+      <div
+        class="journey-ribbon"
+        aria-hidden="true"
+        data-testid="journey-ribbon"
+        [style.--ribbon-progress]="renderedRibbonProgress()"
+      >
+        <svg viewBox="0 0 100 100" focusable="false" role="presentation" preserveAspectRatio="xMidYMid slice">
+          <defs>
+            <filter id="journey-ribbon-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="0.55" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <g class="journey-ribbon__lines" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#journey-ribbon-glow)">
+            @for (path of ribbonPaths(); track $index) {
+              <path [attr.d]="path" />
+            }
+          </g>
+        </svg>
+      </div>
       <nav class="sr-only sm:not-sr-only sm:fixed sm:top-1/2 sm:right-8 sm:z-10 sm:-translate-y-1/2" aria-label="Progreso del recorrido" data-testid="journey-progress">
         <ol class="grid gap-3">
           @for (step of journeySteps; track step.id; let index = $index) {
@@ -52,7 +72,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
           }
         </ol>
       </nav>
-      <section id="intro" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="journey-title">
+      <section id="intro" #introStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="journey-title">
         <div class="grid min-h-full content-center py-8 sm:py-12">
           <div class="max-w-2xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Portfolio de Lucas Figueroa</p>
@@ -67,7 +87,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         </div>
       </section>
 
-      <section id="experience" #experienceStep class="h-svh overflow-hidden scroll-mt-0" aria-labelledby="experience-title">
+      <section id="experience" #experienceStep class="journey-section h-svh overflow-hidden scroll-mt-0" aria-labelledby="experience-title">
         <div class="grid h-full content-center gap-3 py-4 sm:gap-6 sm:py-10">
           <div class="max-w-3xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
@@ -153,7 +173,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         </div>
       </section>
 
-      <section id="projects" class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="projects-title">
+      <section id="projects" class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="projects-title">
         <div class="grid min-h-full content-center gap-6 py-8 sm:gap-8 sm:py-12">
           <div class="max-w-3xl">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Evidencia</p>
@@ -210,7 +230,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         </div>
       </section>
 
-      <section id="assistant" #journeyStep class="h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="assistant-title">
+      <section id="assistant" #journeyStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="assistant-title">
         <div class="grid min-h-full content-center py-8 sm:py-12">
           <div class="max-w-2xl border-y border-border p-6 opacity-0 translate-y-4 transition-[opacity,transform] duration-300 ease-out sm:ml-auto sm:p-12 motion-reduce:translate-y-0 motion-reduce:transition-none" [class.opacity-100]="isVisible()" [class.translate-y-0]="isVisible()">
             <h2 id="assistant-title" tabindex="-1" class="m-0 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Asistente</h2>
@@ -263,6 +283,10 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private readonly content = this.route.snapshot.data['content'] as
     ValidatedContentBundle | undefined;
   readonly progress = signal<0 | 1 | 2 | 3>(0);
+  /** Drives the decorative SVG between its compact line state and open ribbon state. */
+  readonly ribbonProgress = signal(0);
+  readonly renderedRibbonProgress = signal(0);
+  readonly ribbonPaths = signal(this.buildRibbonPaths(0, 0));
   readonly journeySteps = [
     { id: 'intro', label: 'Introducci\u00f3n' },
     { id: 'experience', label: 'Trayectoria' },
@@ -295,16 +319,29 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   };
   private readonly journeyStep = viewChild.required<ElementRef<HTMLElement>>('journeyStep');
   private readonly experienceStep = viewChild.required<ElementRef<HTMLElement>>('experienceStep');
+  private readonly introStep = viewChild.required<ElementRef<HTMLElement>>('introStep');
   private readonly chatPage = viewChild(ChatPage);
   private observer: IntersectionObserver | undefined;
   private fragmentSubscription: Subscription | undefined;
   private initialFragmentNavigation = true;
+  private sectionScrollContainers: HTMLElement[] = [];
+  private navigationIntent: { destinationId: string; targetProgress: number } | undefined;
+  private ribbonAnimationFrame: number | undefined;
+  private lastRibbonFrame = 0;
+  private readonly onWindowScroll = () => this.updateRibbonProgressFromScroll();
+  private readonly onSectionScroll = (event: Event) => {
+    const section = event.currentTarget as HTMLElement;
+    this.updateRibbonProgressFromSection(section);
+  };
 
   advance(nextStep: 1 | 2 | 3): void {
     if (nextStep !== this.progress() + 1) return;
     this.progress.set(nextStep);
     const nextSection = ['experience', 'projects', 'assistant'][nextStep - 1];
-    if (nextSection) queueMicrotask(() => this.focusFragment(nextSection));
+    if (nextSection) {
+      this.beginRibbonNavigation(nextSection, nextStep / (this.journeySteps.length - 1));
+      queueMicrotask(() => this.focusFragment(nextSection));
+    }
   }
 
   unlockAssistant(): void {
@@ -317,6 +354,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     if (this.progress() !== 3) return;
     this.assistantUnlocked.set(false);
     this.progress.set(0);
+    this.beginRibbonNavigation('intro', 0);
     queueMicrotask(() => this.focusFragment('intro'));
   }
 
@@ -340,6 +378,19 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   }
 
   ngAfterViewInit(): void {
+    window.addEventListener('scroll', this.onWindowScroll, { passive: true });
+    this.sectionScrollContainers = Array.from(
+      this.introStep().nativeElement.parentElement?.querySelectorAll<HTMLElement>('.journey-section') ?? [],
+    );
+    this.sectionScrollContainers.forEach((section) =>
+      section.addEventListener('scroll', this.onSectionScroll, { passive: true }),
+    );
+    this.updateRibbonProgressFromScroll();
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      this.renderRibbonProgress(0.58, 0);
+    } else {
+      this.ribbonAnimationFrame = requestAnimationFrame((time) => this.animateRibbon(time));
+    }
     this.fragmentSubscription = this.route.fragment.subscribe((fragment) => {
       if (fragment) {
         const retainReadingOrder = this.initialFragmentNavigation;
@@ -366,7 +417,217 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    window.removeEventListener('scroll', this.onWindowScroll);
+    if (this.ribbonAnimationFrame !== undefined) cancelAnimationFrame(this.ribbonAnimationFrame);
+    this.sectionScrollContainers.forEach((section) =>
+      section.removeEventListener('scroll', this.onSectionScroll),
+    );
     this.observer?.disconnect();
     this.fragmentSubscription?.unsubscribe();
+  }
+
+  private updateRibbonProgressFromScroll(): void {
+    const activeSection = this.sectionScrollContainers.reduce<HTMLElement | undefined>(
+      (closest, section) =>
+        !closest ||
+        Math.abs(section.getBoundingClientRect().top) < Math.abs(closest.getBoundingClientRect().top)
+          ? section
+          : closest,
+      undefined,
+    );
+    if (activeSection) this.updateRibbonProgressFromSection(activeSection);
+  }
+
+  private updateRibbonProgressFromSection(section: HTMLElement): void {
+    const index = this.sectionScrollContainers.indexOf(section);
+    if (index < 0) return;
+
+    if (this.navigationIntent) {
+      if (section.id !== this.navigationIntent.destinationId) return;
+      this.navigationIntent = undefined;
+    }
+
+    const scrollableDistance = Math.max(0, section.scrollHeight - section.clientHeight);
+    const sectionProgress = scrollableDistance ? section.scrollTop / scrollableDistance : 0;
+    const value = (index + Math.min(1, Math.max(0, sectionProgress))) / (this.journeySteps.length - 1);
+    this.setRibbonProgress(Math.min(1, value));
+  }
+
+  private beginRibbonNavigation(destinationId: string, targetProgress: number): void {
+    this.navigationIntent = { destinationId, targetProgress };
+    this.setRibbonProgress(targetProgress);
+  }
+
+  private setRibbonProgress(value: number): void {
+    const target = Math.min(1, Math.max(0, value));
+    this.ribbonProgress.set(target);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      this.renderRibbonProgress(0.58, 0);
+    }
+  }
+
+  private animateRibbon(time: number): void {
+    const elapsed = this.lastRibbonFrame ? time - this.lastRibbonFrame : 0;
+    this.lastRibbonFrame = time;
+    const current = this.renderedRibbonProgress();
+    const target = this.ribbonProgress();
+    const smoothing = Math.min(0.08, Math.max(0.018, elapsed / 700));
+    const next = Math.abs(target - current) < 0.002 ? target : current + (target - current) * smoothing;
+    this.renderRibbonProgress(next, time / 2300);
+    this.ribbonAnimationFrame = requestAnimationFrame((nextTime) => this.animateRibbon(nextTime));
+  }
+
+  private renderRibbonProgress(progress: number, phase: number): void {
+    this.renderedRibbonProgress.set(progress);
+    this.ribbonPaths.set(this.buildRibbonPaths(progress, phase));
+  }
+
+  private buildRibbonPaths(progress: number, phase: number): string[] {
+    const route = this.buildRibbonRoute(phase);
+    const head = this.getRibbonHeadIndex(progress, route.anchors);
+    const stageDistance = Math.abs(progress * 3 - Math.round(progress * 3));
+    const settledExpansion = 1 - Math.min(1, stageDistance / 0.34);
+    const visiblePointCount = Math.round(188 - settledExpansion * 76);
+    const tail = Math.max(0, Math.floor(head) - visiblePointCount);
+    const spine = route.points.slice(tail, Math.floor(head) + 1);
+    return Array.from({ length: 11 }, (_, thread) => this.offsetRibbonThread(spine, thread, progress));
+  }
+
+  private buildRibbonRoute(phase: number): { points: Array<[number, number]>; anchors: number[] } {
+    const stages = [
+      { center: [82, 49], radius: [15, 8], figure: 'compact' },
+      { center: [50, 86], radius: [60, 43], figure: 'low-swell' },
+      { center: [50, 57], radius: [60, 35], figure: 'diagonal-sweep' },
+      { center: [55, 55], radius: [58, 34], figure: 'lateral-fold' },
+    ] as const;
+    const points: Array<[number, number]> = [];
+    const anchors: number[] = [];
+    for (let stage = 0; stage < stages.length; stage += 1) {
+      const loop = this.buildRibbonLoop(stages[stage], phase + stage * 0.16);
+      if (stage) {
+        const from = points.at(-1)!;
+        const beforeFrom = points.at(-2)!;
+        const fromTangent: [number, number] = [from[0] - beforeFrom[0], from[1] - beforeFrom[1]];
+        const toTangent: [number, number] = [loop[1][0] - loop[0][0], loop[1][1] - loop[0][1]];
+        points.push(...this.buildRibbonConnector(from, loop[0], fromTangent, toTangent, phase));
+      }
+      points.push(...loop);
+      anchors.push(points.length - 1);
+    }
+    return { points, anchors };
+  }
+
+  private buildRibbonLoop(
+    stage: {
+      center: readonly [number, number];
+      radius: readonly [number, number];
+      figure: 'compact' | 'low-swell' | 'diagonal-sweep' | 'lateral-fold';
+    },
+    phase: number,
+  ): Array<[number, number]> {
+    return Array.from({ length: 112 }, (_, index) => {
+      const t = index / 111;
+      const angle = Math.PI * 2 * t;
+      const breathing = 1 + 0.035 * Math.sin(phase * 0.72);
+      const { center, radius } = stage;
+      let x: number;
+      let y: number;
+      if (stage.figure === 'low-swell') {
+        x = center[0] + radius[0] - radius[0] * 2 * t;
+        y =
+          center[1] -
+          breathing * radius[1] * 0.72 * Math.sin(Math.PI * t) +
+          3.2 * Math.sin(angle + phase * 0.14);
+      } else if (stage.figure === 'diagonal-sweep') {
+        x = center[0] - radius[0] + radius[0] * 2 * t;
+        y =
+          center[1] +
+          radius[1] * (1 - 2 * t) +
+          breathing * 7.5 * Math.sin(angle + phase * 0.12);
+      } else if (stage.figure === 'lateral-fold') {
+        x = center[0] + radius[0] - radius[0] * 2 * t + 22 * Math.sin(Math.PI * t);
+        y =
+          center[1] -
+          radius[1] +
+          radius[1] * 2 * t +
+          breathing * 7 * Math.sin(angle * 1.1 + phase * 0.1);
+      } else {
+        x = center[0] - radius[0] + radius[0] * 2 * t;
+        y = center[1] + 0.75 * Math.sin(angle + phase * 0.22);
+      }
+      return [x, y];
+    });
+  }
+
+  private buildRibbonConnector(
+    from: [number, number],
+    to: [number, number],
+    fromTangent: [number, number],
+    toTangent: [number, number],
+    phase: number,
+  ): Array<[number, number]> {
+    const distance = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    const handleLength = Math.min(42, Math.max(14, distance * 0.34));
+    const normalize = ([x, y]: [number, number]): [number, number] => {
+      const length = Math.max(0.001, Math.hypot(x, y));
+      return [x / length, y / length];
+    };
+    const fromDirection = normalize(fromTangent);
+    const toDirection = normalize(toTangent);
+    const controlFrom: [number, number] = [
+      from[0] + fromDirection[0] * handleLength,
+      from[1] + fromDirection[1] * handleLength,
+    ];
+    const controlTo: [number, number] = [
+      to[0] - toDirection[0] * handleLength,
+      to[1] - toDirection[1] * handleLength,
+    ];
+    const chordLength = Math.max(0.001, distance);
+    const chordNormal: [number, number] = [-(to[1] - from[1]) / chordLength, (to[0] - from[0]) / chordLength];
+
+    return Array.from({ length: 94 }, (_, index) => {
+      const t = (index + 1) / 95;
+      const inverse = 1 - t;
+      const bow = Math.sin(Math.PI * t) ** 2 * (1.5 + 0.5 * Math.sin(phase));
+      return [
+        inverse ** 3 * from[0] +
+          3 * inverse ** 2 * t * controlFrom[0] +
+          3 * inverse * t ** 2 * controlTo[0] +
+          t ** 3 * to[0] +
+          chordNormal[0] * bow,
+        inverse ** 3 * from[1] +
+          3 * inverse ** 2 * t * controlFrom[1] +
+          3 * inverse * t ** 2 * controlTo[1] +
+          t ** 3 * to[1] +
+          chordNormal[1] * bow,
+      ];
+    });
+  }
+
+  private getRibbonHeadIndex(progress: number, anchors: number[]): number {
+    const stageProgress = progress * (anchors.length - 1);
+    const stage = Math.min(anchors.length - 2, Math.floor(stageProgress));
+    const local = stageProgress - stage;
+    return anchors[stage] + (anchors[stage + 1] - anchors[stage]) * local;
+  }
+
+  private offsetRibbonThread(points: Array<[number, number]>, thread: number, progress: number): string {
+    const stageDistance = Math.abs(progress * 3 - Math.round(progress * 3));
+    const settledExpansion = 1 - Math.min(1, stageDistance / 0.34);
+    const shifted = points.map(([x, y], index) => {
+      const previous = points[Math.max(0, index - 1)];
+      const next = points[Math.min(points.length - 1, index + 1)];
+      const length = Math.max(0.001, Math.hypot(next[0] - previous[0], next[1] - previous[1]));
+      const alongTrail = index / Math.max(1, points.length - 1);
+      const fan = 0.28 + 0.72 * Math.sin(Math.PI * alongTrail);
+      const stage = Math.min(3, Math.round(progress * 3));
+      const settledHalfSpread = [4.5, 9.5, 11, 10][stage];
+      const travelingHalfSpread = 3.25;
+      const halfSpread = travelingHalfSpread + settledExpansion * (settledHalfSpread - travelingHalfSpread) * fan;
+      const normalizedThread = (thread - 5) / 5;
+      const offset = normalizedThread * halfSpread;
+      return `${(x - ((next[1] - previous[1]) / length) * offset).toFixed(2)} ${(y + ((next[0] - previous[0]) / length) * offset).toFixed(2)}`;
+    });
+    return `M ${shifted.join(' L ')}`;
   }
 }
