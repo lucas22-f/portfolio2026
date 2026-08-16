@@ -17,6 +17,10 @@ htmlcov/
 playwright-report/
 test-results/
 
+# Local design and animation workbench artifacts
+artifacts/
+frontend/public/media/journey-ribbon-timeline.gif
+
 # Tool caches
 .angular/
 .pytest_cache/
