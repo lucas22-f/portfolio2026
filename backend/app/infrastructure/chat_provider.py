@@ -228,8 +228,20 @@ class OpenAIChatProvider(ChatProvider):
             input_tokens = usage["input_tokens"]
             output_tokens = usage["output_tokens"]
             output = payload["output"]
-            text = output[0]["content"][0]["text"]
-        except (KeyError, IndexError, TypeError, UnicodeDecodeError, json.JSONDecodeError):
+            text = next(
+                content["text"]
+                for item in output
+                if isinstance(item, Mapping)
+                for content in item.get("content", ())
+                if isinstance(content, Mapping) and content.get("type") == "output_text"
+            )
+        except (
+            KeyError,
+            StopIteration,
+            TypeError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ):
             raise ProviderFailure("invalid-provider-output", retryable=False) from None
         if (
             not isinstance(input_tokens, int)
