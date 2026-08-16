@@ -32,8 +32,8 @@ describe('JourneyPage', () => {
     const continueButton = page.querySelector('[data-testid="continue-intro"]')!;
 
     expect(main.classList.contains('grid')).toBe(false);
-    expect(main.classList.contains('w-[min(100%_-_2rem,_72rem)]')).toBe(true);
-    expect(main.classList.contains('sm:w-[min(100%_-_4rem,_72rem)]')).toBe(true);
+    expect(main.classList.contains('w-[min(100%-2rem,72rem)]')).toBe(true);
+    expect(main.classList.contains('sm:w-[min(100%-4rem,72rem)]')).toBe(true);
     expect(continueButton.classList.contains('min-h-11')).toBe(true);
     expect(page.querySelector('#intro')?.classList.contains('h-svh')).toBe(true);
     expect(page.querySelector('#intro')?.classList.contains('overflow-y-auto')).toBe(true);
@@ -253,6 +253,10 @@ describe('JourneyPage', () => {
     expect(previous.type).toBe('button');
     expect(next.type).toBe('button');
     expect(page.querySelector('[data-testid="projects-position"]')).not.toBeNull();
+    expect(fixture.componentInstance.projectCarouselOptions.duration).toBe(20);
+    expect(
+      fixture.componentInstance.projectCarouselOptions.breakpoints['(prefers-reduced-motion: reduce)'].duration,
+    ).toBe(0);
   });
 
   it('moves through the journey in reading order before focusing the intentionally unlocked chat', async () => {

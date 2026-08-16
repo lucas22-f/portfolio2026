@@ -12,8 +12,8 @@ import { PortfolioRecord } from '../../core/content/content-validator';
   template: `
     <article hlmCard class="h-full border-t-4 border-t-primary bg-card text-card-foreground">
       <header hlmCardHeader>
-        <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">Proyecto</p>
-        <h3 hlmCardTitle class="font-[var(--font-display)] text-2xl tracking-[-0.03em] text-[var(--color-heading)] sm:text-3xl">
+        <p class="m-0 text-xs font-bold uppercase tracking-widest text-primary">Proyecto</p>
+        <h3 hlmCardTitle class="font-(--font-display) text-2xl tracking-[-0.03em] text-(--color-heading) sm:text-3xl">
           {{ record().title }}
         </h3>
       </header>

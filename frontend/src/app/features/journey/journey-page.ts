@@ -34,7 +34,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
   ],
   styleUrl: './journey-page.css',
   template: `
-    <main id="main-content" class="mx-auto w-[min(100%_-_2rem,_72rem)] sm:w-[min(100%_-_4rem,_72rem)]">
+    <main id="main-content" class="mx-auto w-[min(100%-2rem,72rem)] sm:w-[min(100%-4rem,72rem)]">
       <div
         class="journey-ribbon"
         aria-hidden="true"
@@ -76,13 +76,13 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         <div class="grid min-h-full content-center py-8 sm:py-12">
           <div class="max-w-2xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Portfolio de Lucas Figueroa</p>
-            <h1 id="journey-title" tabindex="-1" class="mt-3 max-w-[11ch] font-[var(--font-display)] text-5xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-7xl">Un recorrido claro, sin atajos.</h1>
+            <h1 id="journey-title" tabindex="-1" class="mt-3 max-w-[11ch] font-(--font-display) text-5xl leading-none tracking-tighter text-(--color-ink) sm:text-7xl">Un recorrido claro, sin atajos.</h1>
             <div class="mt-5 max-w-xl" data-testid="profile-summary">
               @for (claim of profileRecord?.claims; track claim.claim_id) {
-                <p class="m-0 text-lg leading-relaxed text-[var(--color-text)] sm:text-xl">{{ claim.text }}</p>
+                <p class="m-0 text-lg leading-relaxed text-(--color-text) sm:text-xl">{{ claim.text }}</p>
               }
             </div>
-            <button hlmBtn class="mt-7 min-h-11" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
+            <button hlmBtn class="cursor-pointer mt-7 min-h-11" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
           </div>
         </div>
       </section>
@@ -91,8 +91,8 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         <div class="grid h-full content-center gap-3 py-4 sm:gap-6 sm:py-10">
           <div class="max-w-3xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
-            <h2 id="experience-title" tabindex="-1" class="mt-2 font-[var(--font-display)] text-3xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:mt-3 sm:text-6xl">
-              Construir sistemas que llegan a producci&oacute;n.
+            <h2 id="experience-title" tabindex="-1" class="mt-2  text-3xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:mt-3 sm:text-6xl">
+              Construir sistemas que llegan a producción.
             </h2>
           </div>
 
@@ -106,25 +106,25 @@ import { ProjectCard } from '../../shared/project-card/project-card';
             >
               <header hlmCardHeader>
                 <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">Experiencia actual</p>
-                  <p class="m-0 text-sm text-muted-foreground">Jun. 2025 &mdash; actualidad</p>
+                  <p class="m-0 text-xs font-bold uppercase tracking-widest text-primary">Experiencia actual</p>
+                  <p class="m-0 text-sm text-muted-foreground">Jun. 2025 — actualidad</p>
                 </div>
-                <h3 hlmCardTitle class="font-[var(--font-display)] text-xl tracking-[-0.03em] text-[var(--color-ink)] sm:text-3xl">
+                <h3 hlmCardTitle class="font-(--font-display) text-xl tracking-[-0.03em] text-(--color-ink) sm:text-3xl">
                   {{ experience.title }}
                 </h3>
               </header>
 
               <div hlmCardContent class="grid gap-3">
                 <p class="m-0 text-xs leading-relaxed text-muted-foreground sm:text-base">
-                  Desarrollo remoto de soluciones conversacionales para equipos de Mercado Libre en la regi&oacute;n.
+                  Desarrollo remoto de soluciones conversacionales para equipos de Mercado Libre en la región.
                 </p>
                 <div hlmSeparator></div>
-                <ul class="m-0 grid list-none gap-2 p-0 text-xs leading-relaxed text-[var(--color-text)] sm:grid-cols-3 sm:text-sm">
-                  <li class="border-l border-border pl-3">Workflows de bots internos y automatizaci&oacute;n.</li>
+                <ul class="m-0 grid list-none gap-2 p-0 text-xs leading-relaxed text-(--color-text) sm:grid-cols-3 sm:text-sm">
+                  <li class="border-l border-border pl-3">Workflows de bots internos y automatización.</li>
                   <li class="border-l border-border pl-3">Code Actions con APIs de RRHH y SAP SuccessFactors.</li>
                   <li class="border-l border-border pl-3">Pipelines de datos e IA sobre Fury.</li>
                 </ul>
-                <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Tecnolog&iacute;as y &aacute;reas de experiencia">
+                <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Tecnologías y áreas de experiencia">
                   @for (tag of experienceTags; track tag) {
                     <li hlmBadge variant="outline">{{ tag }}</li>
                   }
@@ -135,19 +135,19 @@ import { ProjectCard } from '../../shared/project-card/project-card';
           </div>
 
           <div class="grid gap-2 text-xs leading-relaxed text-muted-foreground sm:hidden">
-            <p class="m-0" data-testid="education-list"><span class="font-semibold text-[var(--color-text)]">Formaci&oacute;n:</span> T&eacute;cnico Universitario en Programaci&oacute;n y Desarrollo Web Full Stack (MERN).</p>
-            <p class="m-0" data-testid="certifications-list"><span class="font-semibold text-[var(--color-text)]">Credenciales:</span> 4 certificaciones en desarrollo web, prompting y automatizaci&oacute;n.</p>
+            <p class="m-0" data-testid="education-list"><span class="font-semibold text-(--color-text)">Formación:</span> Técnico Universitario en Programación y Desarrollo Web Full Stack (MERN).</p>
+            <p class="m-0" data-testid="certifications-list"><span class="font-semibold text-(--color-text)">Credenciales:</span> 4 certificaciones en desarrollo web, prompting y automatización.</p>
           </div>
 
           <div class="hidden gap-4 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:items-start">
             <div class="grid gap-2" data-testid="education-list">
-              <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">Formaci&oacute;n</p>
+              <p class="m-0 text-xs font-bold uppercase tracking-widest text-muted-foreground">Formación</p>
               @for (record of educationRecords; track record.id) {
-                <p class="m-0 text-sm leading-snug text-[var(--color-text)]">{{ record.title }}</p>
+                <p class="m-0 text-sm leading-snug text-(--color-text)">{{ record.title }}</p>
               }
             </div>
             <div class="grid gap-2">
-              <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">Especialidades</p>
+              <p class="m-0 text-xs font-bold uppercase tracking-widest text-muted-foreground">Especialidades</p>
               <ul class="m-0 flex list-none flex-wrap gap-2 p-0" data-testid="skills-list" aria-label="Especialidades">
                 @for (record of skillRecords; track record.id) {
                   <li hlmBadge variant="secondary">{{ record.title }}</li>
@@ -157,7 +157,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
           </div>
 
           <div class="hidden gap-2 sm:grid" data-testid="certifications-list">
-            <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-muted-foreground">Certificaciones</p>
+            <p class="m-0 text-xs font-bold uppercase tracking-widest text-muted-foreground">Certificaciones</p>
             <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Certificaciones">
               @for (record of certificationRecords; track record.id) {
                 <li hlmBadge variant="outline">{{ record.title }}</li>
@@ -166,7 +166,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
           </div>
 
           @if (progress() >= 1) {
-            <button hlmBtn class="min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
+            <button hlmBtn class="cursor-pointer min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
               Ver proyectos
             </button>
           }
@@ -177,7 +177,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         <div class="grid min-h-full content-center gap-6 py-8 sm:gap-8 sm:py-12">
           <div class="max-w-3xl">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Evidencia</p>
-          <h2 id="projects-title" tabindex="-1" class="mt-3 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Proyectos en producci&oacute;n</h2>
+          <h2 id="projects-title" tabindex="-1" class="mt-3 text-4xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:text-6xl">Proyectos en producción</h2>
         </div>
         <hlm-carousel
           #projectCarousel
@@ -200,6 +200,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
                 hlmBtn
                 variant="outline"
                 size="sm"
+                class="cursor-pointer"
                 type="button"
                 aria-label="Proyecto anterior"
                 data-testid="projects-previous"
@@ -211,6 +212,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
                 hlmBtn
                 variant="outline"
                 size="sm"
+                class="cursor-pointer"
                 type="button"
                 aria-label="Proyecto siguiente"
                 data-testid="projects-next"
@@ -223,7 +225,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
           </div>
         </hlm-carousel>
           @if (progress() >= 2) {
-            <button hlmBtn class="min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
+            <button hlmBtn class="cursor-pointer min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
               Continuar
             </button>
           }
@@ -233,25 +235,25 @@ import { ProjectCard } from '../../shared/project-card/project-card';
       <section id="assistant" #journeyStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="assistant-title">
         <div class="grid min-h-full content-center py-8 sm:py-12">
           <div class="max-w-2xl border-y border-border p-6 opacity-0 translate-y-4 transition-[opacity,transform] duration-300 ease-out sm:ml-auto sm:p-12 motion-reduce:translate-y-0 motion-reduce:transition-none" [class.opacity-100]="isVisible()" [class.translate-y-0]="isVisible()">
-            <h2 id="assistant-title" tabindex="-1" class="m-0 font-[var(--font-display)] text-4xl font-semibold leading-none tracking-[-0.05em] text-[var(--color-ink)] sm:text-6xl">Asistente</h2>
+            <h2 id="assistant-title" tabindex="-1" class="m-0 text-4xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:text-6xl">Asistente</h2>
         @if (assistantUnlocked()) {
-          <button hlmBtn variant="outline" class="mt-5 min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">
+          <button hlmBtn variant="outline" class="cursor-pointer mt-5 min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">
             Volver al asistente
           </button>
           <app-chat-page [focusOnEntry]="true" />
         } @else if (progress() >= 3) {
-          <p>Completaste el recorrido. Ya pod&eacute;s abrir el chat.</p>
-          <button hlmBtn class="mt-5 min-h-11" data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">
+          <p>Completaste el recorrido. Ya podés abrir el chat.</p>
+          <button hlmBtn class="cursor-pointer mt-5 min-h-11" data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">
             Abrir el chat
           </button>
         } @else {
-          <p class="mt-5 max-w-xl text-lg leading-relaxed text-[var(--color-text)]">
-            Recorr&eacute; las secciones anteriores para habilitar el chat.
+          <p class="mt-5 max-w-xl text-lg leading-relaxed text-(--color-text)">
+            Recorré las secciones anteriores para habilitar el chat.
           </p>
           <button
             hlmBtn
             variant="outline"
-            class="mt-5 min-h-11"
+            class="cursor-pointer mt-5 min-h-11"
             data-testid="return-intro"
             type="button"
             (click)="focusFragment('intro')"
@@ -263,7 +265,7 @@ import { ProjectCard } from '../../shared/project-card/project-card';
             <button
               hlmBtn
               variant="outline"
-              class="mt-4 min-h-11"
+              class="cursor-pointer mt-4 min-h-11"
               data-testid="reset-journey"
               type="button"
               (click)="resetJourney()"
@@ -315,7 +317,10 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   readonly projectCarouselOptions = {
     align: 'start' as const,
     containScroll: 'trimSnaps' as const,
-    duration: 28,
+    duration: 20,
+    breakpoints: {
+      '(prefers-reduced-motion: reduce)': { duration: 0 },
+    },
   };
   private readonly journeyStep = viewChild.required<ElementRef<HTMLElement>>('journeyStep');
   private readonly experienceStep = viewChild.required<ElementRef<HTMLElement>>('experienceStep');
@@ -430,7 +435,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     const activeSection = this.sectionScrollContainers.reduce<HTMLElement | undefined>(
       (closest, section) =>
         !closest ||
-        Math.abs(section.getBoundingClientRect().top) < Math.abs(closest.getBoundingClientRect().top)
+          Math.abs(section.getBoundingClientRect().top) < Math.abs(closest.getBoundingClientRect().top)
           ? section
           : closest,
       undefined,
@@ -591,15 +596,15 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
       const bow = Math.sin(Math.PI * t) ** 2 * (1.5 + 0.5 * Math.sin(phase));
       return [
         inverse ** 3 * from[0] +
-          3 * inverse ** 2 * t * controlFrom[0] +
-          3 * inverse * t ** 2 * controlTo[0] +
-          t ** 3 * to[0] +
-          chordNormal[0] * bow,
+        3 * inverse ** 2 * t * controlFrom[0] +
+        3 * inverse * t ** 2 * controlTo[0] +
+        t ** 3 * to[0] +
+        chordNormal[0] * bow,
         inverse ** 3 * from[1] +
-          3 * inverse ** 2 * t * controlFrom[1] +
-          3 * inverse * t ** 2 * controlTo[1] +
-          t ** 3 * to[1] +
-          chordNormal[1] * bow,
+        3 * inverse ** 2 * t * controlFrom[1] +
+        3 * inverse * t ** 2 * controlTo[1] +
+        t ** 3 * to[1] +
+        chordNormal[1] * bow,
       ];
     });
   }
