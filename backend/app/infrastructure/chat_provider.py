@@ -11,6 +11,49 @@ from urllib.request import Request, urlopen
 
 Candidate = dict[str, object]
 
+_GROUNDED_SPANISH_INSTRUCTIONS = (
+    "Respondé en español. Usá únicamente la evidencia provista en la entrada; "
+    "no inventes datos ni referencias. Devolvé solamente partes candidatas que "
+    "cumplan el esquema solicitado."
+)
+
+_CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
+    "type": "array",
+    "items": {
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "const": "text"},
+                    "text": {"type": "string"},
+                    "record_ids": {"type": "array", "items": {"type": "string"}},
+                    "claim_ids": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["type", "text", "record_ids", "claim_ids"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "const": "source"},
+                    "record_id": {"type": "string"},
+                },
+                "required": ["type", "record_id"],
+                "additionalProperties": False,
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "const": "project-card"},
+                    "record_id": {"type": "string"},
+                },
+                "required": ["type", "record_id"],
+                "additionalProperties": False,
+            },
+        ]
+    },
+}
+
 
 class ProviderResult(list[Candidate]):
     """Validated candidates with provider-reported token usage."""
@@ -135,9 +178,18 @@ class OpenAIChatProvider(ChatProvider):
         body = json.dumps(
             {
                 "model": self._limits.model,
+                "instructions": _GROUNDED_SPANISH_INSTRUCTIONS,
                 "input": input_value,
                 "max_output_tokens": self._limits.max_output_tokens,
                 "store": False,
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "candidate_parts",
+                        "strict": True,
+                        "schema": _CANDIDATE_PARTS_SCHEMA,
+                    }
+                },
             },
             ensure_ascii=False,
             separators=(",", ":"),

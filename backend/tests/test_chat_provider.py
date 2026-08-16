@@ -95,6 +95,76 @@ def test_openai_provider_posts_only_controlled_payload_and_returns_candidates() 
     }
 
 
+def test_openai_provider_requests_spanish_grounded_structured_candidate_parts() -> None:
+    received: dict[str, Any] = {}
+
+    def transport(
+        _: str, body: bytes, __: dict[str, str], ___: float
+    ) -> tuple[int, bytes]:
+        received.update(body=json.loads(body))
+        return 200, json.dumps(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": "[]"}],
+                    }
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 3},
+            }
+        ).encode()
+
+    OpenAIChatProvider(api_key="test-secret", transport=transport).generate(
+        [{"record_id": "project", "claim_ids": ["project.summary"]}],
+        {"records": [{"id": "project", "title": "Proyecto"}]},
+    )
+
+    body = received["body"]
+    assert "español" in body["instructions"].lower()
+    assert "únicamente" in body["instructions"].lower()
+    assert body["text"]["format"] == {
+        "type": "json_schema",
+        "name": "candidate_parts",
+        "strict": True,
+        "schema": {
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "const": "text"},
+                            "text": {"type": "string"},
+                            "record_ids": {"type": "array", "items": {"type": "string"}},
+                            "claim_ids": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["type", "text", "record_ids", "claim_ids"],
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "const": "source"},
+                            "record_id": {"type": "string"},
+                        },
+                        "required": ["type", "record_id"],
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "const": "project-card"},
+                            "record_id": {"type": "string"},
+                        },
+                        "required": ["type", "record_id"],
+                        "additionalProperties": False,
+                    },
+                ]
+            },
+        },
+    }
+
+
 def test_openai_provider_blocks_usage_over_limits_without_returning_raw_output() -> None:
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return 200, json.dumps(
