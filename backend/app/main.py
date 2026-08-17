@@ -14,7 +14,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from app.application.chat import CandidateValidationError, build_event_stream, validate_candidate
+from app.application.chat import (
+    CHAT_PROTOCOL_VERSION,
+    CandidateValidationError,
+    build_event_stream,
+    validate_candidate,
+)
 from app.domain.content import ContentBundle, load_content_bundle
 from app.domain.retrieval import retrieve_evidence
 from app.infrastructure.chat_provider import (
@@ -43,7 +48,11 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=500)
     locale: Literal["es"]
-    client_request_id: str = Field(min_length=1, max_length=128)
+    client_request_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
 
 
 def _ndjson(events: list[dict[str, object]]) -> Iterator[bytes]:
@@ -152,6 +161,7 @@ def create_app(
             "app_version": app_version,
             "content_version": bundle.portfolio.content_version,
             "model": provider_model,
+            "protocol_version": CHAT_PROTOCOL_VERSION,
         }
 
     @app.post("/api/v1/chat/stream", tags=["chat"])

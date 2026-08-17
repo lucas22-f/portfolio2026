@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
 from app.domain.content import ContentBundle, PortfolioRecord, ProjectLink
+
+CHAT_PROTOCOL_VERSION: Literal["2"] = "2"
 
 # ---------------------------------------------------------------------------
 # Exception
@@ -32,6 +34,7 @@ class CandidateValidationError(ValueError):
 class TextPart(BaseModel):
     type: Literal["text"] = "text"
     text: str
+    grounding: Literal["general", "portfolio"] = "portfolio"
     record_ids: list[str]
     claim_ids: list[str]
 
@@ -59,6 +62,7 @@ class StartEvent(BaseModel):
     request_id: str
     sequence: int
     type: Literal["start"] = "start"
+    protocol_version: Literal["2"] = CHAT_PROTOCOL_VERSION
     content_version: str
 
 
@@ -91,6 +95,7 @@ class DoneEvent(BaseModel):
     request_id: str
     sequence: int
     type: Literal["done"] = "done"
+    protocol_version: Literal["2"] = CHAT_PROTOCOL_VERSION
     content_version: str
     model: str
     usage: dict[str, int]
@@ -182,11 +187,13 @@ def _validate_text(
 ) -> TextPart:
     """Validate and return a text part."""
     text = candidate.get("text")
+    grounding = candidate.get("grounding")
     record_ids = candidate.get("record_ids")
     claim_ids = candidate.get("claim_ids")
 
     if (
         not isinstance(text, str)
+        or grounding not in {"general", "portfolio"}
         or not isinstance(record_ids, list)
         or not isinstance(claim_ids, list)
     ):
@@ -211,7 +218,18 @@ def _validate_text(
                 message="No pude validar la respuesta.",
             )
 
-    return TextPart(text=text, record_ids=list(record_ids), claim_ids=list(claim_ids))
+    if grounding == "general" and (record_ids or claim_ids):
+        raise CandidateValidationError(
+            code="invalid-provider-output",
+            message="No pude validar la respuesta.",
+        )
+
+    return TextPart(
+        text=text,
+        grounding=cast(Literal["general", "portfolio"], grounding),
+        record_ids=list(record_ids),
+        claim_ids=list(claim_ids),
+    )
 
 
 def _validate_source(
@@ -316,7 +334,15 @@ def build_event_stream(
             ).model_dump(mode="json")
         )
     elif validated_parts:
+        portfolio_text_seen = False
         for part in validated_parts:
+            if isinstance(part, TextPart) and part.grounding == "portfolio":
+                portfolio_text_seen = True
+            if isinstance(part, (SourcePart, ProjectCardPart)) and not portfolio_text_seen:
+                raise CandidateValidationError(
+                    code="invalid-provider-output",
+                    message="No pude validar la respuesta.",
+                )
             sequence += 1
             events.append(
                 PartEvent(

@@ -181,10 +181,11 @@ def test_openai_provider_requests_spanish_grounded_structured_candidate_parts() 
                         "properties": {
                             "type": {"type": "string", "const": "text"},
                             "text": {"type": "string"},
+                            "grounding": {"type": "string", "const": "portfolio"},
                             "record_ids": {"type": "array", "items": {"type": "string"}},
                             "claim_ids": {"type": "array", "items": {"type": "string"}},
                         },
-                        "required": ["type", "text", "record_ids", "claim_ids"],
+                        "required": ["type", "text", "grounding", "record_ids", "claim_ids"],
                         "additionalProperties": False,
                     },
                     {

@@ -3,7 +3,10 @@ import { Injectable } from '@angular/core';
 import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
 import { API_BASE_URL } from '../../core/config/api-base-url';
 
-export type TextPart = { type: 'text'; text: string; record_ids: string[]; claim_ids: string[] };
+export const CHAT_PROTOCOL_VERSION = '2';
+export type TextPart = {
+  type: 'text'; text: string; grounding: 'general' | 'portfolio'; record_ids: string[]; claim_ids: string[];
+};
 export type SourcePart = { type: 'source'; record_id: string; label: string };
 export type ProjectCardPart = {
   type: 'project-card';
@@ -16,11 +19,12 @@ export type ChatPart = TextPart | SourcePart | ProjectCardPart;
 
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
-  | (EventBase & { type: 'start'; content_version: string })
+  | (EventBase & { type: 'start'; protocol_version: typeof CHAT_PROTOCOL_VERSION; content_version: string })
   | (EventBase & { type: 'part'; part: ChatPart })
   | (EventBase & { type: 'refusal' | 'error'; code: string; message: string; retryable: boolean })
   | (EventBase & {
       type: 'done';
+      protocol_version: typeof CHAT_PROTOCOL_VERSION;
       content_version: string;
       model?: string;
       usage?: ChatUsage;
@@ -37,6 +41,7 @@ export type ChatState = {
   retryable: boolean;
   model?: string;
   usage?: ChatUsage;
+  terminalOutcome?: 'refusal' | 'error';
 };
 
 const INVALID_OUTPUT = 'invalid-provider-output';
@@ -60,7 +65,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   if (state.requestId && event.request_id !== state.requestId) {
     throw invalid();
   }
-  if (['complete', 'refused', 'error'].includes(state.status)) {
+  if (state.status === 'complete' || (state.terminalOutcome && event.type !== 'done')) {
     throw invalid();
   }
 
@@ -81,16 +86,16 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
     case 'done':
       return {
         ...state,
-        status: 'complete',
-        announcement: 'Respuesta completa.',
-        retryable: false,
+        status: state.terminalOutcome === 'refusal' ? 'refused' : state.terminalOutcome === 'error' ? 'error' : 'complete',
+        announcement: state.terminalOutcome ? state.announcement : 'Respuesta completa.',
+        retryable: state.terminalOutcome ? state.retryable : false,
         model: event.model,
         usage: event.usage,
       };
     case 'refusal':
-      return { ...state, status: 'refused', announcement: event.message, retryable: false };
+      return { ...state, status: 'refused', terminalOutcome: 'refusal', announcement: event.message, retryable: false };
     case 'error':
-      return { ...state, status: 'error', announcement: event.message, retryable: event.retryable };
+      return { ...state, status: 'error', terminalOutcome: 'error', announcement: event.message, retryable: event.retryable };
   }
 }
 
@@ -107,6 +112,23 @@ export function parseNdjsonEvents(ndjson: string): ChatEvent[] {
       throw invalid();
     requestId ??= event.request_id;
     sequence += 1;
+  }
+  if (events[0]?.type !== 'start' || events.at(-1)?.type !== 'done') throw invalid();
+  let terminalOutcomeSeen = false;
+  let portfolioGroundingSeen = false;
+  for (const event of events.slice(1, -1)) {
+    if (terminalOutcomeSeen || event.type === 'start' || event.type === 'done') throw invalid();
+    if (event.type === 'part') {
+      if (event.part.type === 'text' && event.part.grounding === 'portfolio') {
+        portfolioGroundingSeen = true;
+      }
+      if (
+        (event.part.type === 'source' || event.part.type === 'project-card') &&
+        !portfolioGroundingSeen
+      )
+        throw invalid();
+    }
+    terminalOutcomeSeen = event.type === 'refusal' || event.type === 'error';
   }
   return events;
 }
@@ -139,13 +161,22 @@ function eventBase(value: Record<string, unknown>): EventBase {
 function validatePart(value: unknown): ChatPart {
   if (!value || typeof value !== 'object') return invalid();
   const part = value as Record<string, unknown>;
-  if (part['type'] === 'text')
+  if (part['type'] === 'text') {
+    const grounding =
+      part['grounding'] === 'general' || part['grounding'] === 'portfolio'
+        ? part['grounding']
+        : invalid();
+    const recordIds = ids(part['record_ids']);
+    const claimIds = ids(part['claim_ids']);
+    if (grounding === 'general' && (recordIds.length || claimIds.length)) return invalid();
     return {
       type: 'text',
       text: text(part['text']),
-      record_ids: ids(part['record_ids']),
-      claim_ids: ids(part['claim_ids']),
+      grounding,
+      record_ids: recordIds,
+      claim_ids: claimIds,
     };
+  }
   if (part['type'] === 'source')
     return { type: 'source', record_id: text(part['record_id']), label: text(part['label']) };
   if (part['type'] === 'project-card') {
@@ -172,7 +203,9 @@ function validateEvent(value: unknown): ChatEvent {
   const raw = value as Record<string, unknown>;
   const base = eventBase(raw);
   if (raw['type'] === 'start')
-    return { ...base, type: 'start', content_version: text(raw['content_version']) };
+    return raw['protocol_version'] === CHAT_PROTOCOL_VERSION
+      ? { ...base, type: 'start', protocol_version: CHAT_PROTOCOL_VERSION, content_version: text(raw['content_version']) }
+      : invalid();
   if (raw['type'] === 'part') return { ...base, type: 'part', part: validatePart(raw['part']) };
   if (raw['type'] === 'refusal' || raw['type'] === 'error')
     return typeof raw['retryable'] === 'boolean'
@@ -185,6 +218,7 @@ function validateEvent(value: unknown): ChatEvent {
         }
       : invalid();
   if (raw['type'] === 'done') {
+    if (raw['protocol_version'] !== CHAT_PROTOCOL_VERSION) return invalid();
     const model = text(raw['model']);
     const usage = raw['usage'];
     if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return invalid();
@@ -197,6 +231,7 @@ function validateEvent(value: unknown): ChatEvent {
     return {
       ...base,
       type: 'done',
+      protocol_version: CHAT_PROTOCOL_VERSION,
       content_version: text(raw['content_version']),
       model,
       usage: { ...(totalTokens === undefined ? {} : { total_tokens: totalTokens as number }) },
@@ -213,8 +248,8 @@ export class ChatClient {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/metadata`);
       if (!response.ok) return false;
-      const metadata = (await response.json()) as { content_version?: unknown };
-      return metadata.content_version === this.expectedContentVersion;
+      const metadata = (await response.json()) as { content_version?: unknown; protocol_version?: unknown };
+      return metadata.content_version === this.expectedContentVersion && metadata.protocol_version === CHAT_PROTOCOL_VERSION;
     } catch {
       return false;
     }
@@ -225,27 +260,65 @@ export class ChatClient {
     onEvent: (event: ChatEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message, locale: 'es', client_request_id: crypto.randomUUID() }),
-      signal,
+    const clientRequestId = crypto.randomUUID();
+    console.info('[chat] request sending', {
+      requestId: clientRequestId,
+      messageLength: message.length,
     });
-    if (!response.ok || !response.body) throw new Error('provider-unavailable');
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, locale: 'es', client_request_id: clientRequestId }),
+        signal,
+      });
+    } catch {
+      console.error('[chat] request failed', {
+        requestId: clientRequestId,
+        code: 'provider-unavailable',
+      });
+      throw new Error('provider-unavailable');
+    }
+    console.info('[chat] response received', {
+      requestId: clientRequestId,
+      status: response.status,
+      hasBody: Boolean(response.body),
+    });
+    if (!response.ok || !response.body) {
+      console.error('[chat] request failed', {
+        requestId: clientRequestId,
+        code: 'provider-unavailable',
+      });
+      throw new Error('provider-unavailable');
+    }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let pending = '';
     let expectedSequence = 1;
     let requestId: string | undefined;
-    let terminalSeen = false;
+    let terminalOutcomeSeen = false;
+    let doneSeen = false;
+    let portfolioGroundingSeen = false;
     const emit = (event: ChatEvent): void => {
       if (
         (expectedSequence === 1) !== (event.type === 'start') ||
-        terminalSeen ||
+        doneSeen ||
         event.sequence !== expectedSequence ||
         (requestId && requestId !== event.request_id)
       )
         return invalid();
+      if (terminalOutcomeSeen && event.type !== 'done') return invalid();
+      if (event.type === 'part') {
+        if (event.part.type === 'text' && event.part.grounding === 'portfolio') {
+          portfolioGroundingSeen = true;
+        }
+        if (
+          (event.part.type === 'source' || event.part.type === 'project-card') &&
+          !portfolioGroundingSeen
+        )
+          return invalid();
+      }
       if (
         (event.type === 'start' || event.type === 'done') &&
         event.content_version !== this.expectedContentVersion
@@ -254,22 +327,56 @@ export class ChatClient {
       }
       requestId ??= event.request_id;
       expectedSequence += 1;
-      terminalSeen = ['done', 'error', 'refusal'].includes(event.type);
+      terminalOutcomeSeen ||= event.type === 'error' || event.type === 'refusal';
+      doneSeen ||= event.type === 'done';
+      console.info('[chat] event received', {
+        requestId: event.request_id,
+        sequence: event.sequence,
+        type: event.type,
+        ...(event.type === 'part' ? { partType: event.part.type } : {}),
+        ...(event.type === 'error' || event.type === 'refusal' ? { code: event.code } : {}),
+      });
       onEvent(event);
     };
+    const parseAndEmit = (line: string): void => {
+      try {
+        emit(parseNdjsonEvent(line));
+      } catch (error) {
+        console.error('[chat] stream failed', {
+          requestId: requestId ?? clientRequestId,
+          code: error instanceof ChatStreamError ? error.code : INVALID_OUTPUT,
+        });
+        throw error;
+      }
+    };
     for (;;) {
-      const chunk = await reader.read();
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch {
+        console.error('[chat] stream failed', {
+          requestId: requestId ?? clientRequestId,
+          code: 'provider-unavailable',
+        });
+        throw new Error('provider-unavailable');
+      }
       if (chunk.done) break;
       pending += decoder.decode(chunk.value, { stream: true });
       const index = pending.lastIndexOf('\n');
       if (index < 0) continue;
       const complete = pending.slice(0, index);
       pending = pending.slice(index + 1);
-      complete.split('\n').filter(Boolean).map(parseNdjsonEvent).forEach(emit);
+      complete.split('\n').filter(Boolean).forEach(parseAndEmit);
     }
     if (pending.trim()) {
-      emit(parseNdjsonEvent(pending));
+      parseAndEmit(pending);
     }
-    if (!terminalSeen) throw new ChatStreamError(STREAM_CLOSED, true);
+    if (!doneSeen) {
+      console.error('[chat] stream failed', {
+        requestId: requestId ?? clientRequestId,
+        code: STREAM_CLOSED,
+      });
+      throw new ChatStreamError(STREAM_CLOSED, true);
+    }
   }
 }

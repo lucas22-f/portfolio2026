@@ -50,6 +50,7 @@ def test_health_and_metadata_expose_secret_free_compatibility_fields() -> None:
         "app_version": "test-version",
         "content_version": health.json()["content_version"],
         "model": "fake",
+        "protocol_version": "2",
     }
 
 
@@ -86,11 +87,22 @@ def test_cors_allows_only_configured_origins_and_project_scoped_preview_urls() -
     assert "access-control-allow-origin" not in rejected.headers
 
 
+def test_stream_rejects_log_forging_client_request_ids() -> None:
+    response = _client().post(
+        "/api/v1/chat/stream",
+        json={"message": "MercadoLibre", "locale": "es", "client_request_id": "safe\nforged"},
+    )
+
+    assert response.status_code == 422
+
+
 def test_stream_returns_ordered_ndjson_for_supported_grounded_response() -> None:
     provider = FakeProvider(
         candidates=[
             {
                 "type": "text",
+                "grounding": "portfolio",
+
                 "text": "Lucas trabaja en MercadoLibre.",
                 "record_ids": ["mercadolibre-conversational-ai"],
                 "claim_ids": ["experience-role"],
@@ -237,6 +249,8 @@ def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
         [
             {
                 "type": "text",
+                "grounding": "portfolio",
+
                 "text": "Lucas trabaja en MercadoLibre.",
                 "record_ids": ["mercadolibre-conversational-ai"],
                 "claim_ids": ["experience-role"],
@@ -278,6 +292,8 @@ def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> N
             candidates=[
                 {
                     "type": "text",
+                    "grounding": "portfolio",
+
                     "text": "Respuesta no permitida.",
                     "record_ids": ["mercadolibre-conversational-ai"],
                     "claim_ids": ["profile-role"],
@@ -297,6 +313,23 @@ def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> N
         "message": "No pude validar la respuesta.",
         "retryable": False,
     }
+
+
+def test_stream_maps_source_before_portfolio_text_to_safe_error_event() -> None:
+    response = _client(
+        provider=FakeProvider(
+            candidates=[{"type": "source", "record_id": "mercadolibre-conversational-ai"}]
+        )
+    ).post(
+        "/api/v1/chat/stream",
+        json={"message": "MercadoLibre", "locale": "es", "client_request_id": "c-ordering"},
+    )
+
+    assert response.status_code == 200
+    events = _events(response)
+    assert [event["type"] for event in events] == ["start", "error", "done"]
+    assert events[1]["code"] == "invalid-provider-output"
+    assert events[1]["retryable"] is False
 
 
 def test_metadata_uses_composition_supplied_model_name() -> None:
@@ -338,5 +371,7 @@ def test_api_v1_metadata_and_done_expose_compatible_contract() -> None:
     assert metadata.status_code == 200
     assert metadata.json()["content_version"] == events[0]["content_version"]
     assert events[-1]["content_version"] == metadata.json()["content_version"]
+    assert events[0]["protocol_version"] == metadata.json()["protocol_version"]
+    assert events[-1]["protocol_version"] == metadata.json()["protocol_version"]
     assert events[-1]["model"] == metadata.json()["model"]
     assert events[-1]["usage"] == {"total_tokens": 0}
