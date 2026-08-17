@@ -11,6 +11,12 @@ from urllib.request import Request, urlopen
 
 Candidate = dict[str, object]
 
+_CHAT_INSTRUCTIONS = (
+    "Respondé en español. Podés conversar de forma general sin atribuir datos al "
+    "portfolio. Si la persona pregunta por Lucas, su experiencia, formación, "
+    "habilidades o proyectos, usá exclusivamente la herramienta search_portfolio "
+    "antes de responder. No inventes datos ni referencias."
+)
 _GROUNDED_SPANISH_INSTRUCTIONS = (
     "Respondé en español. Usá únicamente la evidencia provista en la entrada; "
     "no inventes datos ni referencias. Devolvé solamente partes candidatas que "
@@ -27,7 +33,7 @@ _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
                 "properties": {
                     "type": {"type": "string", "const": "text"},
                     "text": {"type": "string"},
-                    "grounding": {"type": "string", "const": "portfolio"},
+                    "grounding": {"type": "string", "enum": ["general", "portfolio"]},
                     "record_ids": {"type": "array", "items": {"type": "string"}},
                     "claim_ids": {"type": "array", "items": {"type": "string"}},
                 },
@@ -56,13 +62,46 @@ _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
     },
 }
 
+_SEARCH_PORTFOLIO_TOOL: dict[str, object] = {
+    "type": "function",
+    "name": "search_portfolio",
+    "description": "Busca evidencia pública aprobada del portfolio de Lucas.",
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 500}},
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+}
+
 
 class ProviderResult(list[Candidate]):
     """Validated candidates with provider-reported token usage."""
 
-    def __init__(self, candidates: Sequence[Mapping[str, object]], *, total_tokens: int) -> None:
+    def __init__(
+        self,
+        candidates: Sequence[Mapping[str, object]],
+        *,
+        total_tokens: int,
+        tool_call: ToolCall | None = None,
+        total_input_tokens: int = 0,
+        total_output_tokens: int = 0,
+    ) -> None:
         super().__init__(dict(candidate) for candidate in candidates)
         self.total_tokens = total_tokens
+        self.tool_call = tool_call
+        self.total_input_tokens = total_input_tokens
+        self.total_output_tokens = total_output_tokens
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    """A validated, opaque continuation for one portfolio retrieval."""
+
+    query: str
+    call_id: str
+    arguments: str
 
 
 Transport = Callable[[str, bytes, dict[str, str], float], tuple[int, bytes]]
@@ -79,6 +118,34 @@ class ProviderFailure(RuntimeError):
         self.code = code
         self.retryable = retryable
         super().__init__(code)
+
+
+def _parse_tool_call(raw_call: Mapping[str, object]) -> ToolCall:
+    """Accept exactly the one strict search tool call supported by this boundary."""
+
+    call_id = raw_call.get("call_id")
+    name = raw_call.get("name")
+    arguments = raw_call.get("arguments")
+    if (
+        not isinstance(call_id, str)
+        or not call_id
+        or name != "search_portfolio"
+        or not isinstance(arguments, str)
+    ):
+        raise ProviderFailure("invalid-provider-output", retryable=False)
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        raise ProviderFailure("invalid-provider-output", retryable=False) from None
+    if (
+        not isinstance(parsed, dict)
+        or set(parsed) != {"query"}
+        or not isinstance(parsed["query"], str)
+        or not parsed["query"].strip()
+        or len(parsed["query"]) > 500
+    ):
+        raise ProviderFailure("invalid-provider-output", retryable=False)
+    return ToolCall(query=parsed["query"], call_id=call_id, arguments=arguments)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,8 +181,11 @@ class ChatProvider(ABC):
     @abstractmethod
     def generate(
         self,
-        candidates: Sequence[Mapping[str, object]],
-        bundle: Mapping[str, object],
+        message: str,
+        evidence: Mapping[str, object] | None = None,
+        tool_call: ToolCall | None = None,
+        prior_input_tokens: int = 0,
+        prior_output_tokens: int = 0,
     ) -> ProviderResult:
         """Return raw candidate parts and reported token usage."""
 
@@ -134,10 +204,13 @@ class FakeProvider(ChatProvider):
 
     def generate(
         self,
-        candidates: Sequence[Mapping[str, object]],
-        bundle: Mapping[str, object],
+        message: str,
+        evidence: Mapping[str, object] | None = None,
+        tool_call: ToolCall | None = None,
+        prior_input_tokens: int = 0,
+        prior_output_tokens: int = 0,
     ) -> ProviderResult:
-        del candidates, bundle
+        del message, evidence, tool_call, prior_input_tokens, prior_output_tokens
         if self._failure is not None:
             raise self._failure
         return ProviderResult(self._candidates, total_tokens=0)
@@ -163,26 +236,58 @@ class OpenAIChatProvider(ChatProvider):
 
     def generate(
         self,
-        candidates: Sequence[Mapping[str, object]],
-        bundle: Mapping[str, object],
+        message: str,
+        evidence: Mapping[str, object] | None = None,
+        tool_call: ToolCall | None = None,
+        prior_input_tokens: int = 0,
+        prior_output_tokens: int = 0,
     ) -> ProviderResult:
-        input_value = json.dumps(
-            {"candidates": [dict(candidate) for candidate in candidates], "bundle": dict(bundle)},
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-        # Every model token consumes at least one UTF-8 byte, so byte length is a safe upper bound.
-        estimated_input_tokens = len(input_value.encode("utf-8"))
-        if estimated_input_tokens > self._limits.max_input_tokens:
+        if prior_input_tokens < 0 or prior_output_tokens < 0:
+            raise ProviderFailure("invalid-provider-output", retryable=False)
+        input_value: object = message
+        instructions = _CHAT_INSTRUCTIONS
+        tools: list[dict[str, object]] | None = [_SEARCH_PORTFOLIO_TOOL]
+        max_output_tokens = self._limits.max_output_tokens - prior_output_tokens
+        if max_output_tokens <= 0:
             raise ProviderFailure("limit-exceeded", retryable=False)
-        self._ensure_projected_cost(estimated_input_tokens)
+        if tool_call is not None:
+            if evidence is None:
+                raise ProviderFailure("invalid-provider-output", retryable=False)
+            input_value = [
+                {"role": "user", "content": message},
+                {
+                    "type": "function_call",
+                    "call_id": tool_call.call_id,
+                    "name": "search_portfolio",
+                    "arguments": tool_call.arguments,
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": tool_call.call_id,
+                    "output": json.dumps(dict(evidence), ensure_ascii=False, separators=(",", ":")),
+                },
+            ]
+            instructions = _GROUNDED_SPANISH_INSTRUCTIONS
+            tools = None
+        elif evidence is not None:
+            raise ProviderFailure("invalid-provider-output", retryable=False)
+        encoded_input = json.dumps(input_value, ensure_ascii=False, separators=(",", ":"))
+        # Every model token consumes at least one UTF-8 byte, so byte length is a safe upper bound.
+        estimated_input_tokens = len(encoded_input.encode("utf-8"))
+        prior_tokens = prior_input_tokens + prior_output_tokens
+        if prior_tokens + estimated_input_tokens > self._limits.max_input_tokens:
+            raise ProviderFailure("limit-exceeded", retryable=False)
+        self._ensure_projected_cost(
+            prior_input_tokens + estimated_input_tokens,
+            prior_output_tokens + max_output_tokens,
+        )
 
         body = json.dumps(
             {
                 "model": self._limits.model,
-                "instructions": _GROUNDED_SPANISH_INSTRUCTIONS,
+                "instructions": instructions,
                 "input": input_value,
-                "max_output_tokens": self._limits.max_output_tokens,
+                "max_output_tokens": max_output_tokens,
                 "store": False,
                 "text": {
                     "format": {
@@ -196,6 +301,12 @@ class OpenAIChatProvider(ChatProvider):
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
+        if tools is not None:
+            body_payload = json.loads(body)
+            body_payload["tools"] = tools
+            body = json.dumps(body_payload, ensure_ascii=False, separators=(",", ":")).encode(
+                "utf-8"
+            )
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -213,33 +324,49 @@ class OpenAIChatProvider(ChatProvider):
             raise ProviderFailure("rate-limited", retryable=True)
         if status < 200 or status >= 300:
             raise ProviderFailure("provider-unavailable", retryable=True)
-        return self._parse_response(response)
+        return self._parse_response(
+            response,
+            prior_input_tokens=prior_input_tokens,
+            prior_output_tokens=prior_output_tokens,
+            expect_tool_result=tool_call is not None,
+        )
 
-    def _ensure_projected_cost(self, input_tokens: int) -> None:
+    def _ensure_projected_cost(self, input_tokens: int, output_tokens: int) -> None:
         projected = (
             input_tokens * self._limits.input_cost_per_million
-            + self._limits.max_output_tokens * self._limits.output_cost_per_million
+            + output_tokens * self._limits.output_cost_per_million
         ) / 1_000_000
         if projected > self._limits.cost_limit_usd:
             raise ProviderFailure("limit-exceeded", retryable=False)
 
-    def _parse_response(self, response: bytes) -> ProviderResult:
+    def _parse_response(
+        self,
+        response: bytes,
+        *,
+        prior_input_tokens: int,
+        prior_output_tokens: int,
+        expect_tool_result: bool,
+    ) -> ProviderResult:
         try:
             payload = json.loads(response)
             usage = payload["usage"]
             input_tokens = usage["input_tokens"]
             output_tokens = usage["output_tokens"]
             output = payload["output"]
-            text = next(
+            function_calls = [
+                item
+                for item in output
+                if isinstance(item, Mapping) and item.get("type") == "function_call"
+            ]
+            text_parts = [
                 content["text"]
                 for item in output
                 if isinstance(item, Mapping)
                 for content in item.get("content", ())
                 if isinstance(content, Mapping) and content.get("type") == "output_text"
-            )
+            ]
         except (
             KeyError,
-            StopIteration,
             TypeError,
             UnicodeDecodeError,
             json.JSONDecodeError,
@@ -248,20 +375,44 @@ class OpenAIChatProvider(ChatProvider):
         if (
             not isinstance(input_tokens, int)
             or not isinstance(output_tokens, int)
-            or input_tokens > self._limits.max_input_tokens
-            or output_tokens > self._limits.max_output_tokens
+            or input_tokens < 0
+            or output_tokens < 0
+            or prior_input_tokens + prior_output_tokens + input_tokens
+            > self._limits.max_input_tokens
+            or prior_output_tokens + output_tokens > self._limits.max_output_tokens
         ):
             raise ProviderFailure("limit-exceeded", retryable=False)
-        self._ensure_actual_cost(input_tokens, output_tokens)
+        total_input_tokens = prior_input_tokens + input_tokens
+        total_output_tokens = prior_output_tokens + output_tokens
+        self._ensure_actual_cost(total_input_tokens, total_output_tokens)
+        total_tokens = total_input_tokens + total_output_tokens
+        if function_calls:
+            if expect_tool_result or len(function_calls) != 1 or text_parts:
+                raise ProviderFailure("invalid-provider-output", retryable=False)
+            tool_call = _parse_tool_call(function_calls[0])
+            return ProviderResult(
+                [],
+                total_tokens=total_tokens,
+                tool_call=tool_call,
+                total_input_tokens=total_input_tokens,
+                total_output_tokens=total_output_tokens,
+            )
+        if len(text_parts) != 1:
+            raise ProviderFailure("invalid-provider-output", retryable=False)
         try:
-            candidates = json.loads(text)
+            candidates = json.loads(text_parts[0])
         except (TypeError, json.JSONDecodeError):
             raise ProviderFailure("invalid-provider-output", retryable=False) from None
         if not isinstance(candidates, list) or not all(
             isinstance(item, dict) for item in candidates
         ):
             raise ProviderFailure("invalid-provider-output", retryable=False)
-        return ProviderResult(candidates, total_tokens=input_tokens + output_tokens)
+        return ProviderResult(
+            candidates,
+            total_tokens=total_tokens,
+            total_input_tokens=total_input_tokens,
+            total_output_tokens=total_output_tokens,
+        )
 
     def _ensure_actual_cost(self, input_tokens: int, output_tokens: int) -> None:
         actual = (

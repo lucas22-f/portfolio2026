@@ -223,6 +223,11 @@ def _validate_text(
             code="invalid-provider-output",
             message="No pude validar la respuesta.",
         )
+    if grounding == "portfolio" and (not record_ids or not claim_ids):
+        raise CandidateValidationError(
+            code="invalid-provider-output",
+            message="No pude validar la respuesta.",
+        )
 
     return TextPart(
         text=text,

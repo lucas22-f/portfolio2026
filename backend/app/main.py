@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -39,6 +40,7 @@ _PROVIDER_MESSAGES = {
     "limit-exceeded": ("La solicitud supera el límite permitido.", False),
     "invalid-provider-output": ("No pude validar la respuesta.", False),
 }
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -98,6 +100,7 @@ def _validate_retrieval_references(
     candidate: Mapping[str, object],
     retrieved_record_ids: set[str],
     retrieved_claim_ids: set[str],
+    retrieved_claims_by_record: Mapping[str, set[str]],
 ) -> Mapping[str, object]:
     """Reject provider output that cites records or claims absent from retrieval."""
 
@@ -109,6 +112,19 @@ def _validate_retrieval_references(
     claim_ids = candidate.get("claim_ids")
     if isinstance(claim_ids, list) and not all(
         isinstance(claim_id, str) and claim_id in retrieved_claim_ids for claim_id in claim_ids
+    ):
+        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
+    if (
+        isinstance(record_ids, list)
+        and isinstance(claim_ids, list)
+        and not all(
+            any(
+                isinstance(record_id, str)
+                and claim_id in retrieved_claims_by_record.get(record_id, set())
+                for record_id in record_ids
+            )
+            for claim_id in claim_ids
+        )
     ):
         raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
     record_id = candidate.get("record_id")
@@ -166,79 +182,151 @@ def create_app(
 
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(request: ChatRequest):  # type: ignore[no-untyped-def]
+        request_id = request.client_request_id
+        logger.info(
+            "chat_request_started request_id=%s message_length=%d locale=%s",
+            request_id,
+            len(request.message),
+            request.locale,
+        )
         if not is_ready or bundle is None or provider is None:
+            logger.warning("chat_request_unavailable request_id=%s", request_id)
             return JSONResponse(status_code=503, content={"status": "unavailable"})
-        outcome = retrieve_evidence(request.message, bundle)
-        if outcome.classification != "allowed":
+        safety_outcome = retrieve_evidence(request.message, bundle)
+        if safety_outcome.classification == "unsafe":
             events = build_event_stream(
-                request.client_request_id,
+                request_id,
                 bundle.portfolio.content_version,
-                refusal=_refusal(outcome.classification),
+                refusal=_refusal("unsafe"),
                 model=provider_model,
+            )
+            logger.info(
+                "chat_stream_completed request_id=%s terminal_state=refusal event_count=%d",
+                request_id,
+                len(events),
             )
             return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
 
-        retrieval_candidates = [
-            {"record_id": item.record_id, "claim_ids": item.matched_claims}
-            for item in outcome.results
-        ]
-        retrieved_record_ids = {result.record_id for result in outcome.results}
-        retrieved_claim_ids = {
-            claim_id for result in outcome.results for claim_id in result.matched_claims
-        }
-        records_by_id = {record.id: record for record in bundle.portfolio.records}
-        public_evidence = {
-            "records": [
-                {
-                    "id": result.record_id,
-                    "title": records_by_id[result.record_id].title,
-                    "claims": [
-                        {"claim_id": claim.claim_id, "text": claim.text}
-                        for claim in records_by_id[result.record_id].claims
-                        if claim.claim_id in result.matched_claims
-                    ],
-                }
-                for result in outcome.results
-            ]
-        }
         try:
             completion = await run_in_threadpool(
                 provider.generate,
-                retrieval_candidates,
-                public_evidence,
+                request.message,
             )
+            retrieved_record_ids: set[str] = set()
+            retrieved_claim_ids: set[str] = set()
+            retrieved_claims_by_record: dict[str, set[str]] = {}
+            if completion.tool_call is not None:
+                outcome = retrieve_evidence(completion.tool_call.query, bundle)
+                logger.info(
+                    "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
+                    request_id,
+                    outcome.classification,
+                    len(outcome.results),
+                )
+                if outcome.classification == "unsafe":
+                    events = build_event_stream(
+                        request_id,
+                        bundle.portfolio.content_version,
+                        refusal=_refusal("unsafe"),
+                        model=provider_model,
+                        usage={"total_tokens": completion.total_tokens},
+                    )
+                    logger.info(
+                        "chat_stream_completed request_id=%s terminal_state=refusal event_count=%d",
+                        request_id,
+                        len(events),
+                    )
+                    return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
+                retrieved_record_ids = {result.record_id for result in outcome.results}
+                retrieved_claim_ids = {
+                    claim_id for result in outcome.results for claim_id in result.matched_claims
+                }
+                retrieved_claims_by_record = {
+                    result.record_id: set(result.matched_claims) for result in outcome.results
+                }
+                records_by_id = {record.id: record for record in bundle.portfolio.records}
+                public_evidence = {
+                    "records": [
+                        {
+                            "id": result.record_id,
+                            "title": records_by_id[result.record_id].title,
+                            "claims": [
+                                {"claim_id": claim.claim_id, "text": claim.text}
+                                for claim in records_by_id[result.record_id].claims
+                                if claim.claim_id in result.matched_claims
+                            ],
+                        }
+                        for result in outcome.results
+                    ]
+                }
+                completion = await run_in_threadpool(
+                    provider.generate,
+                    request.message,
+                    public_evidence,
+                    completion.tool_call,
+                    completion.total_input_tokens,
+                    completion.total_output_tokens,
+                )
+                if completion.tool_call is not None:
+                    raise ProviderFailure("invalid-provider-output", retryable=False)
             candidates = list(completion)
             usage = {"total_tokens": getattr(completion, "total_tokens", 0)}
+            logger.info(
+                "chat_provider_completed request_id=%s model=%s candidate_count=%d total_tokens=%d",
+                request_id,
+                provider_model,
+                len(candidates),
+                usage["total_tokens"],
+            )
             parts = [
                 validate_candidate(
                     _validate_retrieval_references(
-                        candidate, retrieved_record_ids, retrieved_claim_ids
+                        candidate,
+                        retrieved_record_ids,
+                        retrieved_claim_ids,
+                        retrieved_claims_by_record,
                     ),
                     bundle,
                 )
                 for candidate in candidates
             ]
             events = build_event_stream(
-                request.client_request_id,
+                request_id,
                 bundle.portfolio.content_version,
                 validated_parts=parts,
                 model=provider_model,
                 usage=usage,
             )
         except CandidateValidationError as error:
+            logger.warning(
+                "chat_provider_output_rejected request_id=%s code=%s",
+                request_id,
+                error.code,
+            )
             events = build_event_stream(
-                request.client_request_id,
+                request_id,
                 bundle.portfolio.content_version,
                 error={"code": error.code, "message": error.message, "retryable": False},
                 model=provider_model,
             )
         except ProviderFailure as error:
+            logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
             events = build_event_stream(
-                request.client_request_id,
+                request_id,
                 bundle.portfolio.content_version,
                 error=_provider_error(error),
                 model=provider_model,
             )
+        terminal_state = next(
+            (event["type"] for event in reversed(events) if event["type"] in {"error", "refusal"}),
+            "done",
+        )
+        logger.info(
+            "chat_stream_completed request_id=%s terminal_state=%s event_count=%d",
+            request_id,
+            terminal_state,
+            len(events),
+        )
         return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
 
     return app
@@ -262,7 +350,9 @@ def _default_app() -> FastAPI:
         provider=provider,
         provider_model=limits.model,
         allowed_origins=_configured_origins(os.getenv("CORS_ALLOWED_ORIGINS")),
-        preview_origin_regex=_configured_preview_origin_regex(os.getenv("CORS_PREVIEW_ORIGIN_REGEX")),
+        preview_origin_regex=_configured_preview_origin_regex(
+            os.getenv("CORS_PREVIEW_ORIGIN_REGEX")
+        ),
     )
 
 
