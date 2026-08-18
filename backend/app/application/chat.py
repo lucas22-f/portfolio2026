@@ -73,6 +73,15 @@ class PartEvent(BaseModel):
     part: TextPart | SourcePart | ProjectCardPart
 
 
+class ToolEvent(BaseModel):
+    """Non-sensitive notification that the portfolio search tool ran."""
+
+    request_id: str
+    sequence: int
+    type: Literal["tool"] = "tool"
+    tool: Literal["search_portfolio"] = "search_portfolio"
+
+
 class RefusalEvent(BaseModel):
     request_id: str
     sequence: int
@@ -295,12 +304,13 @@ def build_event_stream(
     validated_parts: list[TextPart | SourcePart | ProjectCardPart] | None = None,
     refusal: dict[str, object] | None = None,
     error: dict[str, object] | None = None,
+    portfolio_search_used: bool = False,
     model: str = "fake",
     usage: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Build an ordered list of typed NDJSON event dicts.
 
-    Order: start → [refusal | error | parts...] → done.
+    Order: start → [tool] → [refusal | error | parts...] → done.
     Refusal or error take precedence over parts (mutually exclusive).
     """
     events: list[dict[str, object]] = []
@@ -315,6 +325,12 @@ def build_event_stream(
             content_version=content_version,
         ).model_dump(mode="json")
     )
+
+    if portfolio_search_used:
+        sequence += 1
+        events.append(
+            ToolEvent(request_id=request_id, sequence=sequence).model_dump(mode="json")
+        )
 
     if refusal is not None:
         sequence += 1

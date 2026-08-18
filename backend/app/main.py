@@ -22,7 +22,7 @@ from app.application.chat import (
     validate_candidate,
 )
 from app.domain.content import ContentBundle, load_content_bundle
-from app.domain.retrieval import retrieve_evidence
+from app.domain.retrieval import RetrievalOutcome, retrieve_evidence
 from app.infrastructure.chat_provider import (
     ChatProvider,
     OpenAIChatProvider,
@@ -136,6 +136,51 @@ def _validate_retrieval_references(
     return candidate
 
 
+def _build_public_evidence(
+    bundle: ContentBundle, outcome: RetrievalOutcome
+) -> tuple[dict[str, object], set[str], set[str], dict[str, set[str]]]:
+    """Expose only retrieved records that retain at least one exact matched claim."""
+
+    records_by_id = {record.id: record for record in bundle.portfolio.records}
+    public_records: list[dict[str, object]] = []
+    retrieved_record_ids: set[str] = set()
+    retrieved_claim_ids: set[str] = set()
+    retrieved_claims_by_record: dict[str, set[str]] = {}
+
+    for result in outcome.results:
+        record = records_by_id.get(result.record_id)
+        if record is None:
+            continue
+        claims_by_id = {claim.claim_id: claim for claim in record.claims}
+        matched_claims = [
+            claims_by_id[claim_id]
+            for claim_id in result.matched_claims
+            if claim_id in claims_by_id
+        ]
+        if not matched_claims:
+            continue
+        matched_claim_ids = {claim.claim_id for claim in matched_claims}
+        public_records.append(
+            {
+                "id": record.id,
+                "title": record.title,
+                "claims": [
+                    {"claim_id": claim.claim_id, "text": claim.text} for claim in matched_claims
+                ],
+            }
+        )
+        retrieved_record_ids.add(record.id)
+        retrieved_claim_ids.update(matched_claim_ids)
+        retrieved_claims_by_record[record.id] = matched_claim_ids
+
+    return (
+        {"records": public_records},
+        retrieved_record_ids,
+        retrieved_claim_ids,
+        retrieved_claims_by_record,
+    )
+
+
 def create_app(
     *,
     bundle: ContentBundle | None = None,
@@ -145,11 +190,12 @@ def create_app(
     allowed_origins: tuple[str, ...] = DEFAULT_ORIGINS,
     preview_origin_regex: str = DEFAULT_PREVIEW_ORIGIN_REGEX,
     ready: bool | None = None,
+    debug: bool = False,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
     is_ready = ready if ready is not None else bundle is not None and provider is not None
-    app = FastAPI(title="Portfolio API", version=app_version)
+    app = FastAPI(title="Portfolio API", version=app_version, debug=debug)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(allowed_origins),
@@ -184,6 +230,23 @@ def create_app(
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(request: ChatRequest):  # type: ignore[no-untyped-def]
         request_id = request.client_request_id
+        if app.debug:
+            logger.info(
+                "chat_debug_request_received request_id=%s message=%r locale=%s",
+                request_id,
+                request.message,
+                request.locale,
+            )
+
+        def stream_response(events: list[dict[str, object]]) -> StreamingResponse:
+            if app.debug:
+                logger.info(
+                    "chat_debug_response_payload request_id=%s payload=%s",
+                    request_id,
+                    json.dumps(events, ensure_ascii=False, separators=(",", ":")),
+                )
+            return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
+
         logger.info(
             "chat_request_started request_id=%s message_length=%d locale=%s",
             request_id,
@@ -206,9 +269,10 @@ def create_app(
                 request_id,
                 len(events),
             )
-            return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
+            return stream_response(events)
 
         try:
+            portfolio_search_used = False
             completion = await run_in_threadpool(
                 provider.generate,
                 request.message,
@@ -217,18 +281,36 @@ def create_app(
             retrieved_claim_ids: set[str] = set()
             retrieved_claims_by_record: dict[str, set[str]] = {}
             if completion.tool_call is not None:
+                if app.debug:
+                    logger.info(
+                        "chat_debug_route_selected request_id=%s route=portfolio_rag tool=search_portfolio query=%r call_id=%s",
+                        request_id,
+                        completion.tool_call.query,
+                        completion.tool_call.call_id,
+                    )
                 outcome = retrieve_evidence(completion.tool_call.query, bundle)
+                portfolio_search_used = True
                 logger.info(
                     "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
                     request_id,
                     outcome.classification,
                     len(outcome.results),
                 )
+                if app.debug:
+                    logger.info(
+                        "chat_debug_retrieval_outcome request_id=%s query=%r classification=%s result_count=%d record_ids=%s",
+                        request_id,
+                        completion.tool_call.query,
+                        outcome.classification,
+                        len(outcome.results),
+                        [result.record_id for result in outcome.results],
+                    )
                 if outcome.classification == "unsafe":
                     events = build_event_stream(
                         request_id,
                         bundle.portfolio.content_version,
                         refusal=_refusal("unsafe"),
+                        portfolio_search_used=portfolio_search_used,
                         model=provider_model,
                         usage={"total_tokens": completion.total_tokens},
                     )
@@ -237,8 +319,14 @@ def create_app(
                         request_id,
                         len(events),
                     )
-                    return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
-                if not outcome.results:
+                    return stream_response(events)
+                (
+                    public_evidence,
+                    retrieved_record_ids,
+                    retrieved_claim_ids,
+                    retrieved_claims_by_record,
+                ) = _build_public_evidence(bundle, outcome)
+                if not public_evidence["records"]:
                     parts = [
                         validate_candidate(
                             {
@@ -255,6 +343,7 @@ def create_app(
                         request_id,
                         bundle.portfolio.content_version,
                         validated_parts=parts,
+                        portfolio_search_used=portfolio_search_used,
                         model=provider_model,
                         usage={"total_tokens": completion.total_tokens},
                     )
@@ -263,29 +352,7 @@ def create_app(
                         request_id,
                         len(events),
                     )
-                    return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
-                retrieved_record_ids = {result.record_id for result in outcome.results}
-                retrieved_claim_ids = {
-                    claim_id for result in outcome.results for claim_id in result.matched_claims
-                }
-                retrieved_claims_by_record = {
-                    result.record_id: set(result.matched_claims) for result in outcome.results
-                }
-                records_by_id = {record.id: record for record in bundle.portfolio.records}
-                public_evidence = {
-                    "records": [
-                        {
-                            "id": result.record_id,
-                            "title": records_by_id[result.record_id].title,
-                            "claims": [
-                                {"claim_id": claim.claim_id, "text": claim.text}
-                                for claim in records_by_id[result.record_id].claims
-                                if claim.claim_id in result.matched_claims
-                            ],
-                        }
-                        for result in outcome.results
-                    ]
-                }
+                    return stream_response(events)
                 completion = await run_in_threadpool(
                     provider.generate,
                     request.message,
@@ -296,8 +363,20 @@ def create_app(
                 )
                 if completion.tool_call is not None:
                     raise ProviderFailure("invalid-provider-output", retryable=False)
+            elif app.debug:
+                logger.info(
+                    "chat_debug_route_selected request_id=%s route=general_no_tool",
+                    request_id,
+                )
             candidates = list(completion)
             usage = {"total_tokens": getattr(completion, "total_tokens", 0)}
+            if app.debug and retrieved_record_ids:
+                logger.info(
+                    "chat_debug_rag_response_received request_id=%s candidate_count=%d total_tokens=%d",
+                    request_id,
+                    len(candidates),
+                    usage["total_tokens"],
+                )
             logger.info(
                 "chat_provider_completed request_id=%s model=%s candidate_count=%d total_tokens=%d",
                 request_id,
@@ -305,22 +384,48 @@ def create_app(
                 len(candidates),
                 usage["total_tokens"],
             )
-            parts = [
-                validate_candidate(
-                    _validate_retrieval_references(
+            parts = []
+            for candidate in candidates:
+                try:
+                    candidate = _validate_retrieval_references(
                         candidate,
                         retrieved_record_ids,
                         retrieved_claim_ids,
                         retrieved_claims_by_record,
-                    ),
-                    bundle,
-                )
-                for candidate in candidates
-            ]
+                    )
+                except CandidateValidationError as error:
+                    if app.debug:
+                        logger.warning(
+                            "chat_debug_provider_output_rejected request_id=%s "
+                            "validation_category=retrieval-reference validation_code=%s "
+                            "allowed_record_ids=%s allowed_claim_ids=%s candidate=%s",
+                            request_id,
+                            error.code,
+                            sorted(retrieved_record_ids),
+                            sorted(retrieved_claim_ids),
+                            json.dumps(candidate, ensure_ascii=False, separators=(",", ":")),
+                        )
+                    raise
+                try:
+                    parts.append(validate_candidate(candidate, bundle))
+                except CandidateValidationError as error:
+                    if app.debug:
+                        logger.warning(
+                            "chat_debug_provider_output_rejected request_id=%s "
+                            "validation_category=candidate-contract validation_code=%s "
+                            "allowed_record_ids=%s allowed_claim_ids=%s candidate=%s",
+                            request_id,
+                            error.code,
+                            sorted(retrieved_record_ids),
+                            sorted(retrieved_claim_ids),
+                            json.dumps(candidate, ensure_ascii=False, separators=(",", ":")),
+                        )
+                    raise
             events = build_event_stream(
                 request_id,
                 bundle.portfolio.content_version,
                 validated_parts=parts,
+                portfolio_search_used=portfolio_search_used,
                 model=provider_model,
                 usage=usage,
             )
@@ -334,10 +439,21 @@ def create_app(
                 request_id,
                 bundle.portfolio.content_version,
                 error={"code": error.code, "message": error.message, "retryable": False},
+                portfolio_search_used=portfolio_search_used,
                 model=provider_model,
             )
         except ProviderFailure as error:
-            if error.diagnostic_category is None:
+            if app.debug and portfolio_search_used:
+                logger.warning(
+                    "chat_debug_provider_output_rejected request_id=%s "
+                    "validation_category=provider-contract validation_code=%s parser_stage=%s "
+                    "response_metadata=%s",
+                    request_id,
+                    error.code,
+                    error.diagnostic_category or "none",
+                    json.dumps(error.diagnostic_metadata, separators=(",", ":"), sort_keys=True),
+                )
+            if error.diagnostic_category is None or error.code == "invalid-provider-output":
                 logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
             else:
                 logger.warning(
@@ -350,6 +466,7 @@ def create_app(
                 request_id,
                 bundle.portfolio.content_version,
                 error=_provider_error(error),
+                portfolio_search_used=portfolio_search_used,
                 model=provider_model,
             )
         terminal_state = next(
@@ -362,12 +479,12 @@ def create_app(
             terminal_state,
             len(events),
         )
-        return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
+        return stream_response(events)
 
     return app
 
 
-def _default_app() -> FastAPI:
+def _default_app(*, debug: bool = False) -> FastAPI:
     """Build production dependencies without making an OpenAI request at startup."""
 
     try:
@@ -379,7 +496,7 @@ def _default_app() -> FastAPI:
             limits=limits,
         )
     except (KeyError, OSError, ValueError):
-        return create_app(ready=False)
+        return create_app(ready=False, debug=debug)
     return create_app(
         bundle=bundle,
         provider=provider,
@@ -388,6 +505,7 @@ def _default_app() -> FastAPI:
         preview_origin_regex=_configured_preview_origin_regex(
             os.getenv("CORS_PREVIEW_ORIGIN_REGEX")
         ),
+        debug=debug,
     )
 
 

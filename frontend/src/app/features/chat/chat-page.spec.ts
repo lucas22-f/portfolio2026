@@ -62,6 +62,26 @@ describe('ChatPage', () => {
     expect(page.querySelector('label[for="chat-message"]')?.textContent).toContain('Tu consulta');
   });
 
+  it('renders a portfolio lookup notice when the search tool was invoked', async () => {
+    const client = {
+      checkCompatibility: async () => true,
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '2', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' });
+        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '2', content_version: 'v1' });
+      },
+    };
+    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.componentInstance.message = 'Consulta';
+
+    await fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="portfolio-search-notice"]')?.textContent)
+      .toContain('Información consultada en el portfolio');
+  });
+
   it('keeps invalid provider output on the safe non-retryable validation path', async () => {
     const client = {
       checkCompatibility: async () => true,

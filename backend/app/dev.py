@@ -12,7 +12,7 @@ _ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 def _development_app() -> FastAPI:
     """Build the local application from an ignored .env without overriding shell values."""
     load_dotenv(_ENV_FILE)
-    return _default_app()
+    return _default_app(debug=True)
 
 
 app = _development_app()

@@ -20,8 +20,13 @@ _CHAT_INSTRUCTIONS = (
 _GROUNDED_SPANISH_INSTRUCTIONS = (
     "Respondé en español. Usá únicamente la evidencia provista en la entrada; "
     "no inventes datos ni referencias. Devolvé solamente partes candidatas que "
-    "cumplan el esquema solicitado. Para cada parte de texto usá grounding "
-    "igual a portfolio."
+    "cumplan el esquema solicitado. Para cada parte con grounding igual a "
+    "portfolio, copiá record_ids y claim_ids exactamente desde records[].id y "
+    "records[].claims[].claim_id de la evidencia: cada claim_id debe pertenecer "
+    "al record_id citado en la misma parte. No cites IDs que no estén presentes "
+    "ni combines claims de un record con otro. Si no podés responder una parte "
+    "con una pareja record_id/claim_id exacta, no la presentes como portfolio: "
+    "usá grounding general con record_ids y claim_ids vacíos."
 )
 
 _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
@@ -130,10 +135,14 @@ class ProviderFailure(RuntimeError):
         *,
         retryable: bool,
         diagnostic_category: str | None = None,
+        diagnostic_metadata: Mapping[str, object] | None = None,
     ) -> None:
         self.code = code
         self.retryable = retryable
         self.diagnostic_category = diagnostic_category
+        # This contains only a deliberately allow-listed Responses envelope summary.
+        # It must never contain provider text, prompts, evidence, or raw payloads.
+        self.diagnostic_metadata = dict(diagnostic_metadata or {})
         super().__init__(code)
 
 
@@ -179,15 +188,92 @@ def _parse_tool_call(raw_call: Mapping[str, object]) -> ToolCall:
     return ToolCall(query=parsed["query"], call_id=call_id, arguments=arguments)
 
 
+def _safe_diagnostic_label(value: object) -> str | None:
+    """Return a bounded protocol label, never arbitrary provider text."""
+
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    if not value.replace("-", "").replace("_", "").isalnum():
+        return None
+    return value
+
+
+def _response_diagnostic_metadata(payload: Mapping[str, object]) -> dict[str, object]:
+    """Extract the non-sensitive shape needed to diagnose no-text Responses."""
+
+    metadata: dict[str, object] = {}
+    status = _safe_diagnostic_label(payload.get("status"))
+    if status is not None:
+        metadata["status"] = status
+
+    incomplete_details = payload.get("incomplete_details")
+    if isinstance(incomplete_details, Mapping):
+        reason = _safe_diagnostic_label(incomplete_details.get("reason"))
+        if reason is not None:
+            metadata["incomplete_reason"] = reason
+
+    provider_error = payload.get("error")
+    if isinstance(provider_error, Mapping):
+        error_code = _safe_diagnostic_label(provider_error.get("code"))
+        if error_code is not None:
+            metadata["error_code"] = error_code
+
+    output = payload.get("output")
+    if isinstance(output, list):
+        item_types: list[str] = []
+        content_types: list[list[str]] = []
+        for item in output:
+            if not isinstance(item, Mapping):
+                continue
+            item_type = _safe_diagnostic_label(item.get("type"))
+            if item_type is not None:
+                item_types.append(item_type)
+            item_content_types: list[str] = []
+            content = item.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, Mapping):
+                        content_type = _safe_diagnostic_label(part.get("type"))
+                        if content_type is not None:
+                            item_content_types.append(content_type)
+            content_types.append(item_content_types)
+        metadata["output_item_types"] = item_types
+        metadata["output_content_types"] = content_types
+
+    usage = payload.get("usage")
+    if isinstance(usage, Mapping):
+        token_breakdown: dict[str, int] = {}
+        for key in ("input_tokens", "output_tokens", "total_tokens"):
+            value = usage.get(key)
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                token_breakdown[key] = value
+        for group in ("input_tokens_details", "output_tokens_details"):
+            details = usage.get(group)
+            if isinstance(details, Mapping):
+                for key, value in details.items():
+                    if (
+                        isinstance(key, str)
+                        and len(key) <= 64
+                        and key.replace("_", "").isalnum()
+                        and isinstance(value, int)
+                        and not isinstance(value, bool)
+                        and value >= 0
+                    ):
+                        token_breakdown[f"{group}.{key}"] = value
+        metadata["usage_tokens"] = token_breakdown
+    return metadata
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderLimits:
-    """Explicit per-request controls, configured at application startup."""
+    """Explicit aggregate per-request controls, configured at application startup."""
 
     model: str = "gpt-5-mini"
     timeout_seconds: float = 15.0
     cost_limit_usd: float = 0.05
     max_input_tokens: int = 4_000
-    max_output_tokens: int = 512
+    # A portfolio answer may make two Responses API calls. This is their combined cap.
+    max_output_tokens: int = 1_024
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
 
@@ -278,7 +364,15 @@ class OpenAIChatProvider(ChatProvider):
         input_value: object = message
         instructions = _CHAT_INSTRUCTIONS
         tools: list[dict[str, object]] | None = [_SEARCH_PORTFOLIO_TOOL]
-        max_output_tokens = self._limits.max_output_tokens - prior_output_tokens
+        # The initial call also answers general questions, so it retains its
+        # 512-token allowance. A grounded follow-up receives only the unspent
+        # portion of the 1,024-token aggregate request budget.
+        remaining_output_tokens = self._limits.max_output_tokens - prior_output_tokens
+        max_output_tokens = (
+            remaining_output_tokens
+            if tool_call is not None
+            else min(512, remaining_output_tokens)
+        )
         if max_output_tokens <= 0:
             raise ProviderFailure("limit-exceeded", retryable=False)
         if tool_call is not None:
@@ -319,6 +413,7 @@ class OpenAIChatProvider(ChatProvider):
                 "instructions": instructions,
                 "input": input_value,
                 "max_output_tokens": max_output_tokens,
+                "reasoning": {"effort": "low"},
                 "store": False,
                 "text": {
                     "format": {
@@ -382,8 +477,12 @@ class OpenAIChatProvider(ChatProvider):
         prior_output_tokens: int,
         expect_tool_result: bool,
     ) -> ProviderResult:
+        diagnostic_metadata: dict[str, object] = {}
         try:
             payload = json.loads(response)
+            if not isinstance(payload, Mapping):
+                raise TypeError("response payload must be an object")
+            diagnostic_metadata = _response_diagnostic_metadata(payload)
             usage = payload["usage"]
             input_tokens = usage["input_tokens"]
             output_tokens = usage["output_tokens"]
@@ -406,55 +505,95 @@ class OpenAIChatProvider(ChatProvider):
             UnicodeDecodeError,
             json.JSONDecodeError,
         ):
-            raise ProviderFailure("invalid-provider-output", retryable=False) from None
-        if (
-            not isinstance(input_tokens, int)
-            or not isinstance(output_tokens, int)
-            or input_tokens < 0
-            or output_tokens < 0
-            or prior_input_tokens + prior_output_tokens + input_tokens
-            > self._limits.max_input_tokens
-            or prior_output_tokens + output_tokens > self._limits.max_output_tokens
-        ):
-            raise ProviderFailure("limit-exceeded", retryable=False)
-        total_input_tokens = prior_input_tokens + input_tokens
-        total_output_tokens = prior_output_tokens + output_tokens
-        self._ensure_actual_cost(total_input_tokens, total_output_tokens)
-        total_tokens = total_input_tokens + total_output_tokens
-        if function_calls:
-            if expect_tool_result or len(function_calls) != 1 or text_parts:
-                raise ProviderFailure("invalid-provider-output", retryable=False)
-            tool_call = _parse_tool_call(function_calls[0])
+            raise ProviderFailure(
+                "invalid-provider-output",
+                retryable=False,
+                diagnostic_category="response-envelope-invalid",
+                diagnostic_metadata=diagnostic_metadata,
+            ) from None
+        try:
+            if (
+                not isinstance(input_tokens, int)
+                or not isinstance(output_tokens, int)
+                or input_tokens < 0
+                or output_tokens < 0
+                or prior_input_tokens + prior_output_tokens + input_tokens
+                > self._limits.max_input_tokens
+                or prior_output_tokens + output_tokens > self._limits.max_output_tokens
+            ):
+                raise ProviderFailure("limit-exceeded", retryable=False)
+            total_input_tokens = prior_input_tokens + input_tokens
+            total_output_tokens = prior_output_tokens + output_tokens
+            self._ensure_actual_cost(total_input_tokens, total_output_tokens)
+            total_tokens = total_input_tokens + total_output_tokens
+            if function_calls:
+                if expect_tool_result:
+                    raise ProviderFailure(
+                        "invalid-provider-output",
+                        retryable=False,
+                        diagnostic_category="unexpected-function-call-after-tool-output",
+                    )
+                if len(function_calls) != 1 or text_parts:
+                    raise ProviderFailure(
+                        "invalid-provider-output",
+                        retryable=False,
+                        diagnostic_category="unexpected-function-call",
+                    )
+                tool_call = _parse_tool_call(function_calls[0])
+                return ProviderResult(
+                    [],
+                    total_tokens=total_tokens,
+                    tool_call=tool_call,
+                    total_input_tokens=total_input_tokens,
+                    total_output_tokens=total_output_tokens,
+                )
+            if not text_parts:
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category="missing-output-text",
+                )
+            if len(text_parts) != 1:
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category="multiple-output-text",
+                )
+            try:
+                structured_output = json.loads(text_parts[0])
+            except (TypeError, json.JSONDecodeError):
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category="output-text-json-parse-failed",
+                ) from None
+            if (
+                not isinstance(structured_output, dict)
+                or set(structured_output) != {"parts"}
+                or not isinstance(structured_output["parts"], list)
+            ):
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category="invalid-structured-parts-shape",
+                )
+            candidates = structured_output["parts"]
+            if not all(isinstance(item, dict) for item in candidates):
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category="invalid-structured-parts-shape",
+                )
             return ProviderResult(
-                [],
+                candidates,
                 total_tokens=total_tokens,
-                tool_call=tool_call,
                 total_input_tokens=total_input_tokens,
                 total_output_tokens=total_output_tokens,
             )
-        if len(text_parts) != 1:
-            raise ProviderFailure("invalid-provider-output", retryable=False)
-        try:
-            structured_output = json.loads(text_parts[0])
-        except (TypeError, json.JSONDecodeError):
-            raise ProviderFailure("invalid-provider-output", retryable=False) from None
-        if (
-            not isinstance(structured_output, dict)
-            or set(structured_output) != {"parts"}
-            or not isinstance(structured_output["parts"], list)
-        ):
-            raise ProviderFailure("invalid-provider-output", retryable=False)
-        candidates = structured_output["parts"]
-        if not all(
-            isinstance(item, dict) for item in candidates
-        ):
-            raise ProviderFailure("invalid-provider-output", retryable=False)
-        return ProviderResult(
-            candidates,
-            total_tokens=total_tokens,
-            total_input_tokens=total_input_tokens,
-            total_output_tokens=total_output_tokens,
-        )
+        except ProviderFailure as error:
+            if not error.diagnostic_metadata:
+                error.diagnostic_metadata = diagnostic_metadata
+            raise
 
     def _ensure_actual_cost(self, input_tokens: int, output_tokens: int) -> None:
         actual = (

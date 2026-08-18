@@ -86,6 +86,7 @@ def test_openai_provider_posts_only_controlled_payload_and_returns_candidates() 
     assert received["timeout"] == 2.5
     assert received["body"]["model"] == "gpt-test"
     assert received["body"]["max_output_tokens"] == 512
+    assert received["body"]["reasoning"] == {"effort": "low"}
     assert received["body"]["store"] is False
     assert received["body"]["input"] == "Hola"
     assert received["body"]["tools"][0]["name"] == "search_portfolio"
@@ -158,6 +159,135 @@ def test_openai_provider_rejects_response_without_output_text() -> None:
 
     assert error.value.code == "invalid-provider-output"
     assert error.value.retryable is False
+    assert error.value.diagnostic_category == "missing-output-text"
+
+
+def test_openai_provider_captures_safe_no_text_response_metadata() -> None:
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        return 200, json.dumps(
+            {
+                "status": "incomplete",
+                "incomplete_details": {"reason": "content_filter", "private": "do not log"},
+                "error": {"code": "safety_refusal", "message": "do not log this provider text"},
+                "output": [
+                    {"type": "reasoning", "summary": [{"text": "do not log"}]},
+                    {
+                        "type": "message",
+                        "content": [{"type": "refusal", "refusal": "do not log"}],
+                    },
+                ],
+                "usage": {
+                    "input_tokens": 4,
+                    "output_tokens": 3,
+                    "total_tokens": 7,
+                    "input_tokens_details": {"cached_tokens": 2},
+                    "output_tokens_details": {"reasoning_tokens": 1},
+                },
+            }
+        ).encode()
+
+    with pytest.raises(ProviderFailure) as error:
+        OpenAIChatProvider(api_key="test-secret", transport=transport).generate("Hola")
+
+    assert error.value.diagnostic_category == "missing-output-text"
+    assert error.value.diagnostic_metadata == {
+        "status": "incomplete",
+        "incomplete_reason": "content_filter",
+        "error_code": "safety_refusal",
+        "output_item_types": ["reasoning", "message"],
+        "output_content_types": [[], ["refusal"]],
+        "usage_tokens": {
+            "input_tokens": 4,
+            "output_tokens": 3,
+            "total_tokens": 7,
+            "input_tokens_details.cached_tokens": 2,
+            "output_tokens_details.reasoning_tokens": 1,
+        },
+    }
+    assert "do not log" not in json.dumps(error.value.diagnostic_metadata)
+
+
+@pytest.mark.parametrize(
+    ("second_output", "diagnostic_category"),
+    [
+        (
+            [
+                {
+                    "type": "function_call",
+                    "call_id": "call-2",
+                    "name": "search_portfolio",
+                    "arguments": '{"query":"Lucas"}',
+                }
+            ],
+            "unexpected-function-call-after-tool-output",
+        ),
+        (
+            [{"type": "message", "content": [{"type": "refusal", "refusal": "No"}]}],
+            "missing-output-text",
+        ),
+        (
+            [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                },
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                },
+            ],
+            "multiple-output-text",
+        ),
+        (
+            [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "not json"}],
+                }
+            ],
+            "output-text-json-parse-failed",
+        ),
+        (
+            [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"parts":{}}'}],
+                }
+            ],
+            "invalid-structured-parts-shape",
+        ),
+    ],
+)
+def test_openai_provider_categorizes_second_turn_parser_failures(
+    second_output: list[dict[str, object]], diagnostic_category: str
+) -> None:
+    responses = [
+        {
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "call-1",
+                    "name": "search_portfolio",
+                    "arguments": '{"query":"Lucas"}',
+                }
+            ],
+            "usage": {"input_tokens": 4, "output_tokens": 3},
+        },
+        {"output": second_output, "usage": {"input_tokens": 4, "output_tokens": 3}},
+    ]
+
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        return 200, json.dumps(responses.pop(0)).encode()
+
+    provider = OpenAIChatProvider(api_key="test-secret", transport=transport)
+    first = provider.generate("¿Qué experiencia tiene Lucas?")
+
+    with pytest.raises(ProviderFailure) as error:
+        provider.generate("¿Qué experiencia tiene Lucas?", {"records": []}, first.tool_call)
+
+    assert error.value.code == "invalid-provider-output"
+    assert error.value.retryable is False
+    assert error.value.diagnostic_category == diagnostic_category
 
 
 def test_openai_provider_requests_spanish_grounded_structured_candidate_parts() -> None:
@@ -537,12 +667,116 @@ def test_openai_provider_accumulates_second_turn_usage() -> None:
     assert second.total_tokens == 16
     assert "tools" not in bodies[1]
     assert bodies[1]["store"] is False
-    assert bodies[1]["max_output_tokens"] == 509
+    assert bodies[0]["max_output_tokens"] == 512
+    assert bodies[1]["max_output_tokens"] == 1_021
+    assert bodies[0]["reasoning"] == {"effort": "low"}
+    assert bodies[1]["reasoning"] == {"effort": "low"}
+    assert "copiá record_ids y claim_ids exactamente" in bodies[1]["instructions"]
+    assert "cada claim_id debe pertenecer al record_id citado" in bodies[1]["instructions"]
+    assert "grounding general con record_ids y claim_ids vacíos" in bodies[1]["instructions"]
     tool_output = bodies[1]["input"][2]
     assert tool_output["type"] == "function_call_output"
     assert json.loads(tool_output["output"]) == {
         "records": [{"id": "r", "claims": [{"claim_id": "c", "text": "public"}]}]
     }
+
+
+def test_openai_provider_preserves_aggregate_budget_after_routing_call() -> None:
+    bodies: list[dict[str, object]] = []
+    responses = [
+        {
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "call-1",
+                    "name": "search_portfolio",
+                    "arguments": '{"query":"x"}',
+                }
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 512},
+        },
+        {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                }
+            ],
+            "usage": {"input_tokens": 20, "output_tokens": 42},
+        },
+    ]
+
+    def transport(_: str, body: bytes, __: dict[str, str], ___: float) -> tuple[int, bytes]:
+        bodies.append(json.loads(body))
+        return 200, json.dumps(responses.pop(0)).encode()
+
+    provider = OpenAIChatProvider(
+        api_key="test-secret",
+        limits=ProviderLimits(max_input_tokens=1_000, max_output_tokens=1_024),
+        transport=transport,
+    )
+    first = provider.generate("Pregunta sobre Lucas")
+    second = provider.generate(
+        "Pregunta sobre Lucas",
+        {"records": []},
+        first.tool_call,
+        first.total_input_tokens,
+        first.total_output_tokens,
+    )
+
+    assert first.tool_call is not None
+    assert bodies[0]["max_output_tokens"] == 512
+    assert bodies[1]["max_output_tokens"] == 512
+    assert [body["reasoning"] for body in bodies] == [{"effort": "low"}] * 2
+    assert second.total_input_tokens == 30
+    assert second.total_output_tokens == 554
+    assert second.total_output_tokens <= 1_024
+
+
+def test_openai_provider_keeps_incomplete_grounded_turn_as_safe_failure_without_retry() -> None:
+    calls = 0
+    responses = [
+        {
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "call-1",
+                    "name": "search_portfolio",
+                    "arguments": '{"query":"x"}',
+                }
+            ],
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        },
+        {
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output": [{"type": "reasoning", "summary": []}],
+            "usage": {"input_tokens": 2, "output_tokens": 768},
+        },
+    ]
+
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        nonlocal calls
+        calls += 1
+        return 200, json.dumps(responses.pop(0)).encode()
+
+    provider = OpenAIChatProvider(api_key="test-secret", transport=transport)
+    first = provider.generate("Pregunta sobre Lucas")
+
+    with pytest.raises(ProviderFailure) as error:
+        provider.generate(
+            "Pregunta sobre Lucas",
+            {"records": []},
+            first.tool_call,
+            first.total_input_tokens,
+            first.total_output_tokens,
+        )
+
+    assert error.value.code == "invalid-provider-output"
+    assert error.value.retryable is False
+    assert error.value.diagnostic_category == "missing-output-text"
+    assert error.value.diagnostic_metadata["incomplete_reason"] == "max_output_tokens"
+    assert calls == 2
 
 
 def test_openai_provider_enforces_cumulative_input_limit_before_second_call() -> None:

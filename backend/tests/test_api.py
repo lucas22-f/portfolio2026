@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.domain.content import load_content_bundle
+from app.domain.retrieval import RetrievalOutcome, ScoredResult
 from app.infrastructure.chat_provider import (
     ChatProvider,
     FakeProvider,
@@ -22,7 +23,9 @@ from app.main import _validate_retrieval_references, create_app
 CONTENT_ROOT = Path(__file__).resolve().parents[2] / "content" / "v1"
 
 
-def _client(*, provider: FakeProvider | None = None, ready: bool = True) -> TestClient:
+def _client(
+    *, provider: ChatProvider | None = None, ready: bool = True, debug: bool = False
+) -> TestClient:
     bundle = load_content_bundle(CONTENT_ROOT)
     return TestClient(
         create_app(
@@ -32,6 +35,7 @@ def _client(*, provider: FakeProvider | None = None, ready: bool = True) -> Test
             allowed_origins=("http://localhost:4200", "https://portfolio2026.vercel.app"),
             preview_origin_regex=r"^https://portfolio2026(?:-[a-z0-9-]+)?\.vercel\.app$",
             ready=ready,
+            debug=debug,
         )
     )
 
@@ -322,6 +326,21 @@ def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
     )
 
     assert response.status_code == 200
+    events = _events(response)
+    assert events[1] == {
+        "request_id": "c-safe",
+        "sequence": 2,
+        "type": "tool",
+        "tool": "search_portfolio",
+    }
+    assert set(events[1]) == {"request_id", "sequence", "type", "tool"}
+    assert events[2]["part"] == {
+        "type": "text",
+        "text": "Lucas trabaja en MercadoLibre.",
+        "grounding": "portfolio",
+        "record_ids": ["mercadolibre-conversational-ai"],
+        "claim_ids": ["experience-role"],
+    }
     assert threadpool_calls[0][0] == provider.generate
     _, evidence = provider.calls[1]
     assert [record["id"] for record in evidence["records"]] == ["mercadolibre-conversational-ai"]
@@ -356,8 +375,14 @@ def test_stream_returns_deterministic_general_fallback_after_tool_has_no_results
     )
 
     assert len(provider.calls) == 1
-    assert [event["type"] for event in events] == ["start", "part", "done"]
-    assert events[1]["part"] == {
+    assert [event["type"] for event in events] == ["start", "tool", "part", "done"]
+    assert events[1] == {
+        "request_id": "c-fallback",
+        "sequence": 2,
+        "type": "tool",
+        "tool": "search_portfolio",
+    }
+    assert events[2]["part"] == {
         "type": "text",
         "text": "No encontré información del portfolio sobre ese tema.",
         "grounding": "general",
@@ -365,6 +390,154 @@ def test_stream_returns_deterministic_general_fallback_after_tool_has_no_results
         "claim_ids": [],
     }
     assert events[-1]["usage"] == {"total_tokens": 3}
+
+
+def test_stream_returns_fallback_when_retrieval_records_have_no_matched_claims(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RAG never offers an uncitable record to the second provider call."""
+    provider = RecordingProvider(
+        [
+            ProviderResult(
+                [],
+                total_tokens=3,
+                tool_call=ToolCall("Lucas", "call-1", '{"query":"Lucas"}'),
+            ),
+        ]
+    )
+    no_claim_result = ScoredResult(
+        "lucas-figueroa", score=2, matched_claims=[], matched_tokens=["lucas"], provenance=[]
+    )
+    monkeypatch.setattr(
+        main,
+        "retrieve_evidence",
+        lambda *_args, **_kwargs: RetrievalOutcome(
+            classification="allowed",
+            results=[no_claim_result],
+            query_normalized="lucas",
+        ),
+    )
+
+    events = _events(
+        _client(provider=provider).post(
+            "/api/v1/chat/stream",
+            json={"message": "Lucas", "locale": "es", "client_request_id": "c-no-claims"},
+        )
+    )
+
+    assert len(provider.calls) == 1
+    assert [event["type"] for event in events] == ["start", "tool", "part", "done"]
+    assert events[2]["part"]["grounding"] == "general"
+
+
+def test_debug_logs_retrieval_validation_diagnostics_without_exposing_them_to_client(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    provider = RecordingProvider(
+        [
+            ProviderResult(
+                [],
+                total_tokens=3,
+                tool_call=ToolCall("MercadoLibre", "call-1", '{"query":"MercadoLibre"}'),
+            ),
+            ProviderResult(
+                [
+                    {
+                        "type": "text",
+                        "grounding": "portfolio",
+                        "text": "private candidate text",
+                        "record_ids": ["mercadolibre-conversational-ai"],
+                        "claim_ids": ["profile-role"],
+                    }
+                ],
+                total_tokens=8,
+            ),
+        ]
+    )
+
+    events = _events(
+        _client(provider=provider, debug=True).post(
+            "/api/v1/chat/stream",
+            json={"message": "MercadoLibre", "locale": "es", "client_request_id": "c-debug"},
+        )
+    )
+
+    assert events[1]["type"] == "tool"
+    assert events[2]["code"] == "invalid-provider-output"
+    assert "private candidate text" not in json.dumps(events)
+    debug_log = next(
+        record
+        for record in caplog.records
+        if record.message.startswith("chat_debug_provider_output_rejected")
+    )
+    assert "validation_category=retrieval-reference" in debug_log.message
+    assert "validation_code=invalid-provider-output" in debug_log.message
+    assert "allowed_record_ids=['mercadolibre-conversational-ai']" in debug_log.message
+    assert "allowed_claim_ids=['experience-role']" in debug_log.message
+    assert "private candidate text" in debug_log.message
+
+
+def test_debug_logs_second_turn_parser_stage_without_exposing_it_to_client(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class FailingSecondTurnProvider(ChatProvider):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate(
+            self,
+            message: str,
+            evidence: dict[str, object] | None = None,
+            tool_call: ToolCall | None = None,
+            prior_input_tokens: int = 0,
+            prior_output_tokens: int = 0,
+        ) -> ProviderResult:
+            del message, evidence, tool_call, prior_input_tokens, prior_output_tokens
+            self.calls += 1
+            if self.calls == 1:
+                return ProviderResult(
+                    [],
+                    total_tokens=3,
+                    tool_call=ToolCall("Lucas", "call-1", '{"query":"Lucas"}'),
+                )
+            raise ProviderFailure(
+                "invalid-provider-output",
+                retryable=False,
+                diagnostic_category="output-text-json-parse-failed",
+                diagnostic_metadata={
+                    "status": "completed",
+                    "output_item_types": ["message"],
+                    "output_content_types": [["output_text"]],
+                    "usage_tokens": {"input_tokens": 4, "output_tokens": 3},
+                },
+            )
+
+    events = _events(
+        _client(provider=FailingSecondTurnProvider(), debug=True).post(
+            "/api/v1/chat/stream",
+            json={"message": "Lucas", "locale": "es", "client_request_id": "c-parser-stage"},
+        )
+    )
+
+    assert events[2] == {
+        "request_id": "c-parser-stage",
+        "sequence": 3,
+        "type": "error",
+        "code": "invalid-provider-output",
+        "message": "No pude validar la respuesta.",
+        "retryable": False,
+    }
+    assert "parser_stage" not in json.dumps(events)
+    debug_log = next(
+        record
+        for record in caplog.records
+        if record.message.startswith("chat_debug_provider_output_rejected")
+    )
+    assert "parser_stage=output-text-json-parse-failed" in debug_log.message
+    assert 'response_metadata={"output_content_types":[["output_text"]]' in debug_log.message
+    assert "allowed_record_ids" not in debug_log.message
+    assert "allowed_claim_ids" not in debug_log.message
+    assert "response_metadata" not in json.dumps(events)
 
 
 def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> None:

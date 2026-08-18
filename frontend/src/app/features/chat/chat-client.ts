@@ -20,6 +20,7 @@ export type ChatPart = TextPart | SourcePart | ProjectCardPart;
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
   | (EventBase & { type: 'start'; protocol_version: typeof CHAT_PROTOCOL_VERSION; content_version: string })
+  | (EventBase & { type: 'tool'; tool: 'search_portfolio' })
   | (EventBase & { type: 'part'; part: ChatPart })
   | (EventBase & { type: 'refusal' | 'error'; code: string; message: string; retryable: boolean })
   | (EventBase & {
@@ -42,6 +43,7 @@ export type ChatState = {
   model?: string;
   usage?: ChatUsage;
   terminalOutcome?: 'refusal' | 'error';
+  portfolioSearchUsed: boolean;
 };
 
 const INVALID_OUTPUT = 'invalid-provider-output';
@@ -58,7 +60,7 @@ export class ChatStreamError extends Error {
 }
 
 export function createChatState(): ChatState {
-  return { status: 'idle', parts: [], announcement: '', retryable: false };
+  return { status: 'idle', parts: [], announcement: '', retryable: false, portfolioSearchUsed: false };
 }
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
@@ -82,6 +84,13 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         ...state,
         parts: [...state.parts, event.part],
         announcement: 'Se agregó una respuesta respaldada.',
+      };
+    case 'tool':
+      if (state.portfolioSearchUsed || state.parts.length) throw invalid();
+      return {
+        ...state,
+        portfolioSearchUsed: true,
+        announcement: 'Consultando información del portfolio.',
       };
     case 'done':
       return {
@@ -115,11 +124,18 @@ export function parseNdjsonEvents(ndjson: string): ChatEvent[] {
   }
   if (events[0]?.type !== 'start' || events.at(-1)?.type !== 'done') throw invalid();
   let terminalOutcomeSeen = false;
+  let portfolioSearchSeen = false;
   let portfolioGroundingSeen = false;
-  for (const event of events.slice(1, -1)) {
+  for (const [index, event] of events.slice(1, -1).entries()) {
     if (terminalOutcomeSeen || event.type === 'start' || event.type === 'done') throw invalid();
+    if (event.type === 'tool') {
+      if (portfolioSearchSeen || index !== 0) throw invalid();
+      portfolioSearchSeen = true;
+      continue;
+    }
     if (event.type === 'part') {
       if (event.part.type === 'text' && event.part.grounding === 'portfolio') {
+        if (!portfolioSearchSeen) throw invalid();
         portfolioGroundingSeen = true;
       }
       if (
@@ -206,6 +222,10 @@ function validateEvent(value: unknown): ChatEvent {
     return raw['protocol_version'] === CHAT_PROTOCOL_VERSION
       ? { ...base, type: 'start', protocol_version: CHAT_PROTOCOL_VERSION, content_version: text(raw['content_version']) }
       : invalid();
+  if (raw['type'] === 'tool')
+    return raw['tool'] === 'search_portfolio'
+      ? { ...base, type: 'tool', tool: 'search_portfolio' }
+      : invalid();
   if (raw['type'] === 'part') return { ...base, type: 'part', part: validatePart(raw['part']) };
   if (raw['type'] === 'refusal' || raw['type'] === 'error')
     return typeof raw['retryable'] === 'boolean'
@@ -263,7 +283,7 @@ export class ChatClient {
     const clientRequestId = crypto.randomUUID();
     console.info('[chat] request sending', {
       requestId: clientRequestId,
-      messageLength: message.length,
+      request: { message, locale: 'es', client_request_id: clientRequestId },
     });
     let response: Response;
     try {
@@ -299,6 +319,7 @@ export class ChatClient {
     let requestId: string | undefined;
     let terminalOutcomeSeen = false;
     let doneSeen = false;
+    let portfolioSearchSeen = false;
     let portfolioGroundingSeen = false;
     const emit = (event: ChatEvent): void => {
       if (
@@ -309,8 +330,13 @@ export class ChatClient {
       )
         return invalid();
       if (terminalOutcomeSeen && event.type !== 'done') return invalid();
+      if (event.type === 'tool') {
+        if (portfolioSearchSeen || expectedSequence !== 2) return invalid();
+        portfolioSearchSeen = true;
+      }
       if (event.type === 'part') {
         if (event.part.type === 'text' && event.part.grounding === 'portfolio') {
+          if (!portfolioSearchSeen) return invalid();
           portfolioGroundingSeen = true;
         }
         if (
@@ -330,11 +356,7 @@ export class ChatClient {
       terminalOutcomeSeen ||= event.type === 'error' || event.type === 'refusal';
       doneSeen ||= event.type === 'done';
       console.info('[chat] event received', {
-        requestId: event.request_id,
-        sequence: event.sequence,
-        type: event.type,
-        ...(event.type === 'part' ? { partType: event.part.type } : {}),
-        ...(event.type === 'error' || event.type === 'refusal' ? { code: event.code } : {}),
+        event,
       });
       onEvent(event);
     };

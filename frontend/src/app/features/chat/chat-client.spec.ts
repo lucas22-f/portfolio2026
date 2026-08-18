@@ -13,14 +13,15 @@ describe('parseNdjsonEvents', () => {
     const events = parseNdjsonEvents(
       [
         '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
-        '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Respuesta respaldada.","record_ids":["p1"],"claim_ids":["c1"]}}',
-        '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"source","record_id":"p1","label":"Proyecto"}}',
-        '{"request_id":"r-1","sequence":4,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4},"model":"mock","usage":{"total_tokens":4}}',
+        '{"request_id":"r-1","sequence":2,"type":"tool","tool":"search_portfolio"}',
+        '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Respuesta respaldada.","record_ids":["p1"],"claim_ids":["c1"]}}',
+        '{"request_id":"r-1","sequence":4,"type":"part","part":{"type":"source","record_id":"p1","label":"Proyecto"}}',
+        '{"request_id":"r-1","sequence":5,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4},"model":"mock","usage":{"total_tokens":4}}',
       ].join('\n'),
     );
 
-    expect(events.map((event) => event.type)).toEqual(['start', 'part', 'part', 'done']);
-    expect(events[1]).toMatchObject({
+    expect(events.map((event) => event.type)).toEqual(['start', 'tool', 'part', 'part', 'done']);
+    expect(events[2]).toMatchObject({
       type: 'part',
       part: { type: 'text', text: 'Respuesta respaldada.' },
     });
@@ -156,12 +157,12 @@ describe('ChatClient stream', () => {
           start(controller) {
             controller.enqueue(
               encoder.encode(
-                '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Hola","record_ids":[],"claim_ids":[]}}',
+                '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n{"request_id":"r-1","sequence":2,"type":"tool","tool":"search_portfolio"}\n{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Hola","record_ids":[],"claim_ids":[]}}',
               ),
             );
             controller.enqueue(
               encoder.encode(
-                '\n{"request_id":"r-1","sequence":3,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}\n',
+                '\n{"request_id":"r-1","sequence":4,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}\n',
               ),
             );
             controller.close();
@@ -174,8 +175,8 @@ describe('ChatClient stream', () => {
     await new ChatClient().stream('Consulta', (event) => events.push(event));
     globalThis.fetch = originalFetch;
 
-    expect(events.map((event) => event.sequence)).toEqual([1, 2, 3]);
-    expect(events[1]).toMatchObject({ type: 'part', part: { text: 'Hola' } });
+    expect(events.map((event) => event.sequence)).toEqual([1, 2, 3, 4]);
+    expect(events[2]).toMatchObject({ type: 'part', part: { text: 'Hola' } });
   });
 
   it('rejects a stream that closes without a terminal event as retryable', async () => {
@@ -292,6 +293,27 @@ it('retains validated model and usage from done events', () => {
 
     expect(events.map((event) => event.type)).toEqual(['start', 'refusal', 'done']);
     globalThis.fetch = originalFetch;
+  });
+
+  it('accepts the non-sensitive portfolio search tool event before a refusal', async () => {
+    const events = parseNdjsonEvents([
+      '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"v1"}',
+      '{"request_id":"r-1","sequence":2,"type":"tool","tool":"search_portfolio"}',
+      '{"request_id":"r-1","sequence":3,"type":"refusal","code":"unsupported-request","message":"No puedo responder.","retryable":false}',
+      '{"request_id":"r-1","sequence":4,"type":"done","protocol_version":"2","content_version":"v1","model":"fake","usage":{"total_tokens":0}}',
+    ].join('\n'));
+
+    const state = events.reduce(applyChatEvent, createChatState());
+    expect(state.portfolioSearchUsed).toBe(true);
+    expect(state.status).toBe('refused');
+  });
+
+  it('rejects portfolio-grounded text without a prior portfolio search tool event', () => {
+    expect(() => parseNdjsonEvents([
+      '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"v1"}',
+      '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Respuesta","record_ids":["p1"],"claim_ids":["c1"]}}',
+      '{"request_id":"r-1","sequence":3,"type":"done","protocol_version":"2","content_version":"v1","model":"fake","usage":{"total_tokens":0}}',
+    ].join('\n'))).toThrow('invalid-provider-output');
   });
 
   it('requires general text to have empty citations', () => {

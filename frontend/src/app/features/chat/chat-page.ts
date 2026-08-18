@@ -74,6 +74,12 @@ import {
         </p>
       }
 
+      @if (state().portfolioSearchUsed) {
+        <p data-testid="portfolio-search-notice" class="mt-6 border-l-4 border-primary bg-card p-3 text-sm text-[var(--color-text)]" role="status">
+          Información consultada en el portfolio.
+        </p>
+      }
+
       <section class="mt-6 grid gap-4" aria-label="Respuesta del asistente">
         @for (part of state().parts; track $index) {
           @switch (part.type) {

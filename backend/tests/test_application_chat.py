@@ -482,6 +482,47 @@ class TestBuildEventStream:
         assert events[1]["sequence"] == 2
         assert events[2]["sequence"] == 3
 
+    def test_portfolio_search_tool_event_is_emitted_before_every_outcome(self) -> None:
+        events = build_event_stream(
+            request_id="req-tool",
+            content_version="a" * 64,
+            refusal={"code": "unsafe-request", "message": "No.", "retryable": False},
+            portfolio_search_used=True,
+        )
+
+        assert events == [
+            {
+                "request_id": "req-tool",
+                "sequence": 1,
+                "type": "start",
+                "protocol_version": "2",
+                "content_version": "a" * 64,
+            },
+            {
+                "request_id": "req-tool",
+                "sequence": 2,
+                "type": "tool",
+                "tool": "search_portfolio",
+            },
+            {
+                "request_id": "req-tool",
+                "sequence": 3,
+                "type": "refusal",
+                "code": "unsafe-request",
+                "message": "No.",
+                "retryable": False,
+            },
+            {
+                "request_id": "req-tool",
+                "sequence": 4,
+                "type": "done",
+                "protocol_version": "2",
+                "content_version": "a" * 64,
+                "model": "fake",
+                "usage": {"total_tokens": 0},
+            },
+        ]
+
     def test_multiple_parts_in_order(self) -> None:
         bundle = _make_bundle()
         part1 = validate_candidate(
