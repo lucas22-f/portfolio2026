@@ -10,8 +10,14 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.domain.content import load_content_bundle
-from app.infrastructure.chat_provider import ChatProvider, FakeProvider, ProviderFailure
-from app.main import create_app
+from app.infrastructure.chat_provider import (
+    ChatProvider,
+    FakeProvider,
+    ProviderFailure,
+    ProviderResult,
+    ToolCall,
+)
+from app.main import _validate_retrieval_references, create_app
 
 CONTENT_ROOT = Path(__file__).resolve().parents[2] / "content" / "v1"
 
@@ -101,13 +107,11 @@ def test_stream_returns_ordered_ndjson_for_supported_grounded_response() -> None
         candidates=[
             {
                 "type": "text",
-                "grounding": "portfolio",
-
-                "text": "Lucas trabaja en MercadoLibre.",
-                "record_ids": ["mercadolibre-conversational-ai"],
-                "claim_ids": ["experience-role"],
+                "grounding": "general",
+                "text": "Hola, ¿en qué puedo ayudarte?",
+                "record_ids": [],
+                "claim_ids": [],
             },
-            {"type": "source", "record_id": "mercadolibre-conversational-ai"},
         ]
     )
     response = _client(provider=provider).post(
@@ -122,14 +126,26 @@ def test_stream_returns_ordered_ndjson_for_supported_grounded_response() -> None
     events = _events(response)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/x-ndjson")
-    assert [event["type"] for event in events] == ["start", "part", "part", "done"]
-    assert [event["sequence"] for event in events] == [1, 2, 3, 4]
+    assert [event["type"] for event in events] == ["start", "part", "done"]
+    assert [event["sequence"] for event in events] == [1, 2, 3]
     assert events[0]["request_id"] == "c-1"
-    assert events[1]["part"]["record_ids"] == ["mercadolibre-conversational-ai"]  # type: ignore[index]
+    assert events[1]["part"]["grounding"] == "general"  # type: ignore[index]
 
 
-def test_stream_refuses_unsupported_and_unsafe_requests_in_spanish() -> None:
-    client = _client()
+def test_stream_allows_general_and_refuses_unsafe_requests_in_spanish() -> None:
+    client = _client(
+        provider=FakeProvider(
+            candidates=[
+                {
+                    "type": "text",
+                    "text": "Hola.",
+                    "grounding": "general",
+                    "record_ids": [],
+                    "claim_ids": [],
+                }
+            ]
+        )
+    )
 
     unsupported = _events(
         client.post(
@@ -148,14 +164,8 @@ def test_stream_refuses_unsupported_and_unsafe_requests_in_spanish() -> None:
         )
     )
 
-    assert unsupported[1] == {
-        "request_id": "c-2",
-        "sequence": 2,
-        "type": "refusal",
-        "code": "unsupported-request",
-        "message": "No cuento con información aprobada para responder eso.",
-        "retryable": False,
-    }
+    assert unsupported[1]["type"] == "part"
+    assert unsupported[1]["part"]["grounding"] == "general"
     assert unsafe[1]["code"] == "unsafe-request"
     assert unsafe[1]["retryable"] is False
     assert unsafe[1]["message"] == "No puedo ayudar con esa solicitud."
@@ -202,6 +212,30 @@ def test_stream_maps_provider_and_invalid_output_failures_without_leaking_inputs
     assert "private prompt" not in json.dumps(invalid_events)
 
 
+def test_stream_logs_safe_provider_diagnostic_category_by_request_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    request_id = "c-auth"
+    response = _client(
+        provider=FakeProvider(
+            failure=ProviderFailure(
+                "provider-unavailable", retryable=True, diagnostic_category="auth"
+            )
+        )
+    ).post(
+        "/api/v1/chat/stream",
+        json={"message": "private prompt", "locale": "es", "client_request_id": request_id},
+    )
+
+    assert _events(response)[1]["code"] == "provider-unavailable"
+    provider_log = next(
+        record for record in caplog.records if record.message.startswith("chat_provider_failed")
+    )
+    assert f"request_id={request_id}" in provider_log.message
+    assert "diagnostic_category=auth" in provider_log.message
+    assert "private prompt" not in provider_log.message
+
+
 @pytest.mark.parametrize(
     ("code", "message", "retryable"),
     [
@@ -233,13 +267,21 @@ def test_stream_maps_known_provider_failures_to_safe_spanish_events(
 
 
 class RecordingProvider(ChatProvider):
-    def __init__(self, candidates: list[dict[str, object]]) -> None:
-        self.candidates = candidates
-        self.calls: list[tuple[list[dict[str, object]], dict[str, object]]] = []
+    def __init__(self, results: list[ProviderResult]) -> None:
+        self.results = results
+        self.calls: list[tuple[str, dict[str, object] | None]] = []
 
-    def generate(self, candidates: object, bundle: object) -> list[dict[str, object]]:
-        self.calls.append((list(candidates), dict(bundle)))  # type: ignore[arg-type]
-        return self.candidates
+    def generate(
+        self,
+        message: str,
+        evidence: dict[str, object] | None = None,
+        tool_call: ToolCall | None = None,
+        prior_input_tokens: int = 0,
+        prior_output_tokens: int = 0,
+    ) -> ProviderResult:
+        del tool_call, prior_input_tokens, prior_output_tokens
+        self.calls.append((message, evidence))
+        return self.results.pop(0)
 
 
 def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
@@ -247,14 +289,23 @@ def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
 ) -> None:
     provider = RecordingProvider(
         [
-            {
-                "type": "text",
-                "grounding": "portfolio",
-
-                "text": "Lucas trabaja en MercadoLibre.",
-                "record_ids": ["mercadolibre-conversational-ai"],
-                "claim_ids": ["experience-role"],
-            }
+            ProviderResult(
+                [],
+                total_tokens=4,
+                tool_call=ToolCall("MercadoLibre", "call-1", '{"query":"MercadoLibre"}'),
+            ),
+            ProviderResult(
+                [
+                    {
+                        "type": "text",
+                        "grounding": "portfolio",
+                        "text": "Lucas trabaja en MercadoLibre.",
+                        "record_ids": ["mercadolibre-conversational-ai"],
+                        "claim_ids": ["experience-role"],
+                    }
+                ],
+                total_tokens=8,
+            ),
         ]
     )
     threadpool_calls: list[tuple[object, tuple[object, ...]]] = []
@@ -272,7 +323,7 @@ def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
 
     assert response.status_code == 200
     assert threadpool_calls[0][0] == provider.generate
-    _, evidence = provider.calls[0]
+    _, evidence = provider.calls[1]
     assert [record["id"] for record in evidence["records"]] == ["mercadolibre-conversational-ai"]
     assert evidence["records"][0]["claims"] == [
         {
@@ -286,6 +337,36 @@ def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
     assert "source_text" not in evidence
 
 
+def test_stream_returns_deterministic_general_fallback_after_tool_has_no_results() -> None:
+    provider = RecordingProvider(
+        [
+            ProviderResult(
+                [],
+                total_tokens=3,
+                tool_call=ToolCall("tema inexistente", "call-1", '{"query":"tema inexistente"}'),
+            ),
+        ]
+    )
+
+    events = _events(
+        _client(provider=provider).post(
+            "/api/v1/chat/stream",
+            json={"message": "Decime algo", "locale": "es", "client_request_id": "c-fallback"},
+        )
+    )
+
+    assert len(provider.calls) == 1
+    assert [event["type"] for event in events] == ["start", "part", "done"]
+    assert events[1]["part"] == {
+        "type": "text",
+        "text": "No encontré información del portfolio sobre ese tema.",
+        "grounding": "general",
+        "record_ids": [],
+        "claim_ids": [],
+    }
+    assert events[-1]["usage"] == {"total_tokens": 3}
+
+
 def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> None:
     response = _client(
         provider=FakeProvider(
@@ -293,7 +374,6 @@ def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> N
                 {
                     "type": "text",
                     "grounding": "portfolio",
-
                     "text": "Respuesta no permitida.",
                     "record_ids": ["mercadolibre-conversational-ai"],
                     "claim_ids": ["profile-role"],
@@ -313,6 +393,22 @@ def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> N
         "message": "No pude validar la respuesta.",
         "retryable": False,
     }
+
+
+def test_retrieval_reference_validation_rejects_claim_from_a_different_record() -> None:
+    with pytest.raises(main.CandidateValidationError):
+        _validate_retrieval_references(
+            {
+                "type": "text",
+                "grounding": "portfolio",
+                "text": "No verificable.",
+                "record_ids": ["record-a"],
+                "claim_ids": ["claim-b"],
+            },
+            {"record-a", "record-b"},
+            {"claim-a", "claim-b"},
+            {"record-a": {"claim-a"}, "record-b": {"claim-b"}},
+        )
 
 
 def test_stream_maps_source_before_portfolio_text_to_safe_error_event() -> None:

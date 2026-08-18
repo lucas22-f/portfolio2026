@@ -1,17 +1,18 @@
 from pathlib import Path
 
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from app.domain.content import load_content_bundle
-from app.infrastructure.chat_provider import FakeProvider
-from app.main import create_app
+from app.main import _default_app
+
+_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 def _development_app() -> FastAPI:
-    """Build a credential-free local application with deterministic chat responses."""
-    content_root = Path(__file__).resolve().parents[2] / "content" / "v1"
-    return create_app(bundle=load_content_bundle(content_root), provider=FakeProvider())
+    """Build the local application from an ignored .env without overriding shell values."""
+    load_dotenv(_ENV_FILE)
+    return _default_app()
 
 
 app = _development_app()
