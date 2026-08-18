@@ -41,13 +41,20 @@ test('renders a mocked grounded answer with its source and project card', async 
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
     stream: ndjson([
-      { type: 'start', request_id: 'grounded', sequence: 1, content_version: CONTENT_VERSION },
+      {
+        type: 'start',
+        request_id: 'grounded',
+        sequence: 1,
+        protocol_version: '2',
+        content_version: CONTENT_VERSION,
+      },
       {
         type: 'part',
         request_id: 'grounded',
         sequence: 2,
         part: {
           type: 'text',
+          grounding: 'portfolio',
           text: 'Lucas implementó sistemas RAG sobre Fury.',
           record_ids: ['project-rag-fury'],
           claim_ids: ['project-rag-fury-claim'],
@@ -75,6 +82,7 @@ test('renders a mocked grounded answer with its source and project card', async 
         type: 'done',
         request_id: 'grounded',
         sequence: 5,
+        protocol_version: '2',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 12 },
@@ -89,7 +97,7 @@ test('renders a mocked grounded answer with its source and project card', async 
   await expect(page.getByText('Lucas implementó sistemas RAG sobre Fury.')).toBeVisible();
   await expect(page.getByText('Fuente: CV, página 1')).toBeVisible();
   await expect(
-    page.getByRole('region', { name: 'Respuesta respaldada' }).getByRole('heading', {
+    page.getByRole('region', { name: 'Respuesta del asistente' }).getByRole('heading', {
       name: 'Sistemas RAG sobre Fury',
     }),
   ).toBeVisible();
@@ -102,7 +110,13 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
     stream: ndjson([
-      { type: 'start', request_id: 'refusal', sequence: 1, content_version: CONTENT_VERSION },
+      {
+        type: 'start',
+        request_id: 'refusal',
+        sequence: 1,
+        protocol_version: '2',
+        content_version: CONTENT_VERSION,
+      },
       {
         type: 'refusal',
         request_id: 'refusal',
@@ -110,6 +124,15 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         code: 'unsupported-request',
         message: 'No cuento con información publicada para responder esa consulta.',
         retryable: false,
+      },
+      {
+        type: 'done',
+        request_id: 'refusal',
+        sequence: 3,
+        protocol_version: '2',
+        content_version: CONTENT_VERSION,
+        model: 'mock-model',
+        usage: { total_tokens: 0 },
       },
     ]),
   });
@@ -121,7 +144,13 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
     stream: ndjson([
-      { type: 'start', request_id: 'invalid', sequence: 1, content_version: CONTENT_VERSION },
+      {
+        type: 'start',
+        request_id: 'invalid',
+        sequence: 1,
+        protocol_version: '2',
+        content_version: CONTENT_VERSION,
+      },
       {
         type: 'part',
         request_id: 'invalid',

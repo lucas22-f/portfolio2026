@@ -123,6 +123,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "Lucas tiene experiencia en Python y FastAPI.",
             "record_ids": ["python-proj"],
             "claim_ids": ["c1"],
@@ -211,6 +213,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "Hola <script>alert('xss')</script> mundo",
             "record_ids": [],
             "claim_ids": [],
@@ -224,6 +228,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "texto limpio",
             "record_ids": ["<b>malicious</b>"],
             "claim_ids": [],
@@ -236,6 +242,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "texto valido",
             "record_ids": ["non-existent-record"],
             "claim_ids": [],
@@ -248,6 +256,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "texto valido",
             "record_ids": ["python-proj"],
             "claim_ids": ["non-existent-claim"],
@@ -314,6 +324,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "Texto general sin referencias.",
             "record_ids": [],
             "claim_ids": [],
@@ -327,6 +339,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "Linea con <br/> tag.",
             "record_ids": [],
             "claim_ids": [],
@@ -339,6 +353,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "texto valido",
             "record_ids": ["python-proj", "non-existent"],
             "claim_ids": [],
@@ -350,6 +366,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "texto valido",
             "record_ids": ["python-proj"],
             "claim_ids": ["c1", "non-existent"],
@@ -387,6 +405,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "limpio",
             "record_ids": [],
             "claim_ids": ["c1", "<a>link</a>"],
@@ -399,6 +419,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         original = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "Texto original.",
             "record_ids": [],
             "claim_ids": [],
@@ -412,6 +434,8 @@ class TestValidateCandidate:
         bundle = _make_bundle()
         candidate: dict[str, object] = {
             "type": "text",
+            "grounding": "portfolio",
+
             "text": "Version <3 de la libreria.",
             "record_ids": [],
             "claim_ids": [],
@@ -449,6 +473,8 @@ class TestBuildEventStream:
         part = validate_candidate(
             {
                 "type": "text",
+                "grounding": "portfolio",
+
                 "text": "Contenido valido.",
                 "record_ids": [],
                 "claim_ids": [],
@@ -474,6 +500,8 @@ class TestBuildEventStream:
         part1 = validate_candidate(
             {
                 "type": "text",
+                "grounding": "portfolio",
+
                 "text": "Primero.",
                 "record_ids": [],
                 "claim_ids": [],
@@ -582,7 +610,17 @@ class TestBuildEventStream:
 
     def test_project_card_part_in_stream(self) -> None:
         bundle = _make_bundle()
-        part = validate_candidate(
+        text_part = validate_candidate(
+            {
+                "type": "text",
+                "grounding": "portfolio",
+                "text": "Este proyecto está publicado en el portfolio.",
+                "record_ids": ["python-proj"],
+                "claim_ids": ["c1"],
+            },
+            bundle,
+        )
+        card_part = validate_candidate(
             {
                 "type": "project-card",
                 "record_id": "python-proj",
@@ -592,14 +630,38 @@ class TestBuildEventStream:
         events = build_event_stream(
             request_id="req-009",
             content_version="a" * 64,
-            validated_parts=[part],
+            validated_parts=[text_part, card_part],
         )
-        assert len(events) == 3
-        part_event = events[1]
+        assert len(events) == 4
+        part_event = events[2]
         assert part_event["type"] == "part"
         assert part_event["part"]["type"] == "project-card"
         assert part_event["part"]["title"] == "Python API REST"
         assert len(part_event["part"]["links"]) == 1
+
+    def test_rejects_project_card_before_portfolio_grounded_text(self) -> None:
+        bundle = _make_bundle()
+        card_part = validate_candidate(
+            {"type": "project-card", "record_id": "python-proj"}, bundle
+        )
+        text_part = validate_candidate(
+            {
+                "type": "text",
+                "grounding": "portfolio",
+                "text": "Proyecto publicado.",
+                "record_ids": ["python-proj"],
+                "claim_ids": ["c1"],
+            },
+            bundle,
+        )
+
+        with pytest.raises(CandidateValidationError) as error:
+            build_event_stream(
+                request_id="req-order",
+                content_version="a" * 64,
+                validated_parts=[card_part, text_part],
+            )
+        assert error.value.code == "invalid-provider-output"
 
     def test_request_id_carries_through_all_events(self) -> None:
         events = build_event_stream(
@@ -615,6 +677,8 @@ class TestBuildEventStream:
         text_part = validate_candidate(
             {
                 "type": "text",
+                "grounding": "portfolio",
+
                 "text": "Texto.",
                 "record_ids": [],
                 "claim_ids": [],
@@ -658,7 +722,32 @@ def test_done_event_includes_model_and_usage() -> None:
         "request_id": "req-usage",
         "sequence": 2,
         "type": "done",
+        "protocol_version": "2",
         "content_version": "a" * 64,
         "model": "tested-model",
         "usage": {"total_tokens": 7},
     }
+
+
+def test_general_text_requires_empty_citations_and_carries_general_grounding() -> None:
+    bundle = _make_bundle()
+    result = validate_candidate({
+        "type": "text", "text": "Hola, ¿en qué puedo ayudarte?", "grounding": "general",
+        "record_ids": [], "claim_ids": [],
+    }, bundle)
+    assert isinstance(result, TextPart)
+    assert result.grounding == "general"
+
+
+def test_general_text_with_citations_is_rejected() -> None:
+    with pytest.raises(CandidateValidationError):
+        validate_candidate({
+            "type": "text", "text": "No corresponde.", "grounding": "general",
+            "record_ids": ["python-proj"], "claim_ids": ["c1"],
+        }, _make_bundle())
+
+
+def test_event_stream_includes_protocol_version_on_metadata_events() -> None:
+    events = build_event_stream("req-v2", "a" * 64)
+    assert events[0]["protocol_version"] == "2"
+    assert events[-1]["protocol_version"] == "2"

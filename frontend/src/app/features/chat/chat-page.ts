@@ -74,11 +74,14 @@ import {
         </p>
       }
 
-      <section class="mt-6 grid gap-4" aria-label="Respuesta respaldada">
+      <section class="mt-6 grid gap-4" aria-label="Respuesta del asistente">
         @for (part of state().parts; track $index) {
           @switch (part.type) {
             @case ('text') {
-              <p>{{ part.text }}</p>
+              <article class="grid gap-2" [attr.aria-label]="part.grounding === 'general' ? 'Respuesta general' : 'Respuesta basada en el portfolio'">
+                <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">{{ part.grounding === 'general' ? 'Respuesta general' : 'Basada en el portfolio' }}</p>
+                <p class="m-0">{{ part.text }}</p>
+              </article>
             }
             @case ('source') {
               <p class="m-0 text-sm text-muted-foreground">Fuente: {{ part.label }}</p>

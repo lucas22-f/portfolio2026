@@ -2,6 +2,7 @@ import { Page } from '@playwright/test';
 
 type ChatMock = {
   metadataVersion: string;
+  metadataProtocolVersion?: string;
   stream?: string;
 };
 
@@ -13,7 +14,10 @@ export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
   await page.route('**/api/v1/metadata', async (route) => {
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ content_version: mock.metadataVersion }),
+      body: JSON.stringify({
+        content_version: mock.metadataVersion,
+        protocol_version: mock.metadataProtocolVersion ?? '2',
+      }),
     });
   });
   await page.route('**/api/v1/chat/stream', async (route) => {

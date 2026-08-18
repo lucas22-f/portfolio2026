@@ -26,19 +26,20 @@ describe('ChatPage', () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '2', content_version: 'v1' });
         onEvent({
           request_id: 'r-1',
           sequence: 2,
           type: 'part',
           part: {
             type: 'text',
+            grounding: 'portfolio',
             text: 'Respuesta respaldada.',
             record_ids: ['p1'],
             claim_ids: ['c1'],
           },
         });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '2', content_version: 'v1' });
       },
     };
     await TestBed.configureTestingModule({
@@ -54,9 +55,10 @@ describe('ChatPage', () => {
     expect(page.querySelector('[aria-live="polite"]')?.textContent).toContain(
       'Respuesta completa.',
     );
-    expect(page.querySelector('[aria-label="Respuesta respaldada"]')?.textContent).toContain(
+    expect(page.querySelector('[aria-label="Respuesta del asistente"]')?.textContent).toContain(
       'Respuesta respaldada.',
     );
+    expect(page.textContent).toContain('Basada en el portfolio');
     expect(page.querySelector('label[for="chat-message"]')?.textContent).toContain('Tu consulta');
   });
 

@@ -12,10 +12,10 @@ describe('parseNdjsonEvents', () => {
   it('accepts only ordered allow-listed parts', () => {
     const events = parseNdjsonEvents(
       [
-        '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
-        '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","text":"Respuesta respaldada.","record_ids":["p1"],"claim_ids":["c1"]}}',
+        '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+        '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Respuesta respaldada.","record_ids":["p1"],"claim_ids":["c1"]}}',
         '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"source","record_id":"p1","label":"Proyecto"}}',
-        '{"request_id":"r-1","sequence":4,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4},"model":"mock","usage":{"total_tokens":4}}',
+        '{"request_id":"r-1","sequence":4,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4},"model":"mock","usage":{"total_tokens":4}}',
       ].join('\n'),
     );
 
@@ -29,12 +29,12 @@ describe('parseNdjsonEvents', () => {
   it('rejects malformed, unsafe, and out-of-sequence events', () => {
     expect(() =>
       parseNdjsonEvents(
-        '{"request_id":"r","sequence":1,"type":"part","part":{"type":"text","text":"<strong>no</strong>"}}',
+        '{"request_id":"r","sequence":1,"type":"part","part":{"type":"text","grounding":"portfolio","text":"<strong>no</strong>"}}',
       ),
     ).toThrow('invalid-provider-output');
     expect(() =>
       parseNdjsonEvents(
-        '{"request_id":"r","sequence":2,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+        '{"request_id":"r","sequence":2,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
       ),
     ).toThrow('invalid-provider-output');
   });
@@ -45,6 +45,7 @@ describe('applyChatEvent', () => {
     request_id: 'r-1',
     sequence: 1,
     type: 'start',
+    protocol_version: '2',
     content_version: '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
   };
 
@@ -95,11 +96,11 @@ describe('ChatClient stream', () => {
   it.each([
     [
       'part',
-      '{"request_id":"r-1","sequence":1,"type":"part","part":{"type":"text","text":"No debe mostrarse","record_ids":[],"claim_ids":[]}}',
+      '{"request_id":"r-1","sequence":1,"type":"part","part":{"type":"text","grounding":"portfolio","text":"No debe mostrarse","record_ids":[],"claim_ids":[]}}',
     ],
     [
       'done',
-      '{"request_id":"r-1","sequence":1,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}',
+      '{"request_id":"r-1","sequence":1,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}',
     ],
     [
       'error',
@@ -129,8 +130,8 @@ describe('ChatClient stream', () => {
     globalThis.fetch = async () =>
       new Response(
         [
-          '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
-          '{"request_id":"r-1","sequence":2,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+          '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+          '{"request_id":"r-1","sequence":2,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
         ].join('\n'),
         { status: 200 },
       );
@@ -155,12 +156,12 @@ describe('ChatClient stream', () => {
           start(controller) {
             controller.enqueue(
               encoder.encode(
-                '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","text":"Hola","record_ids":[],"claim_ids":[]}}',
+                '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Hola","record_ids":[],"claim_ids":[]}}',
               ),
             );
             controller.enqueue(
               encoder.encode(
-                '\n{"request_id":"r-1","sequence":3,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}\n',
+                '\n{"request_id":"r-1","sequence":3,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}\n',
               ),
             );
             controller.close();
@@ -181,7 +182,7 @@ describe('ChatClient stream', () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () =>
       new Response(
-        '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n',
+        '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}\n',
         {
           status: 200,
         },
@@ -198,9 +199,9 @@ describe('ChatClient stream', () => {
     globalThis.fetch = async () =>
       new Response(
         [
-          '{"request_id":"r-1","sequence":1,"type":"start","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
-          '{"request_id":"r-1","sequence":2,"type":"done","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}',
-          '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"text","text":"No debe mostrarse","record_ids":[],"claim_ids":[]}}',
+          '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+          '{"request_id":"r-1","sequence":2,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":4}}',
+          '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"text","grounding":"portfolio","text":"No debe mostrarse","record_ids":[],"claim_ids":[]}}',
         ].join('\n'),
         { status: 200 },
       );
@@ -230,7 +231,7 @@ it('rejects start events with incompatible content versions', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
     new Response(
-      '{\"request_id\":\"r-1\",\"sequence\":1,\"type\":\"start\",\"content_version\":\"different-version\"}\n',
+      '{\"request_id\":\"r-1\",\"sequence\":1,\"type\":\"start\",\"protocol_version\":\"2\",\"content_version\":\"different-version\"}\n',
     );
 
   await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
@@ -245,8 +246,8 @@ it('rejects done events with incompatible content versions', async () => {
   globalThis.fetch = async () =>
     new Response(
       [
-        '{\"request_id\":\"r-1\",\"sequence\":1,\"type\":\"start\",\"content_version\":\"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c\"}',
-        '{\"request_id\":\"r-1\",\"sequence\":2,\"type\":\"done\",\"content_version\":\"different-version\",\"model\":\"fake\",\"usage\":{\"total_tokens\":4}}',
+        '{\"request_id\":\"r-1\",\"sequence\":1,\"type\":\"start\",\"protocol_version\":\"2\",\"content_version\":\"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c\"}',
+        '{\"request_id\":\"r-1\",\"sequence\":2,\"type\":\"done\",\"protocol_version\":\"2\",\"content_version\":\"different-version\",\"model\":\"fake\",\"usage\":{\"total_tokens\":4}}',
       ].join('\n'),
     );
 
@@ -262,12 +263,14 @@ it('retains validated model and usage from done events', () => {
     request_id: 'r-1',
     sequence: 1,
     type: 'start',
+    protocol_version: '2',
     content_version: '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
   });
   const complete = applyChatEvent(started, {
     request_id: 'r-1',
     sequence: 2,
     type: 'done',
+    protocol_version: '2',
     content_version: '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
     model: 'fake',
     usage: { total_tokens: 4 },
@@ -275,3 +278,35 @@ it('retains validated model and usage from done events', () => {
 
   expect(complete).toMatchObject({ model: 'fake', usage: { total_tokens: 4 } });
 });
+
+  it('accepts a refusal followed by its required done event', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response([
+      '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c"}',
+      '{"request_id":"r-1","sequence":2,"type":"refusal","code":"unsupported-request","message":"No puedo responder.","retryable":false}',
+      '{"request_id":"r-1","sequence":3,"type":"done","protocol_version":"2","content_version":"838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c","model":"fake","usage":{"total_tokens":0}}',
+    ].join('\n'));
+    const events: ChatEvent[] = [];
+
+    await new ChatClient().stream('Consulta', (event) => events.push(event));
+
+    expect(events.map((event) => event.type)).toEqual(['start', 'refusal', 'done']);
+    globalThis.fetch = originalFetch;
+  });
+
+  it('requires general text to have empty citations', () => {
+    expect(() => parseNdjsonEvents([
+      '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"v1"}',
+      '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"text","grounding":"general","text":"Hola","record_ids":["p1"],"claim_ids":[]}}',
+      '{"request_id":"r-1","sequence":3,"type":"done","protocol_version":"2","content_version":"v1","model":"fake","usage":{"total_tokens":0}}',
+    ].join('\n'))).toThrow('invalid-provider-output');
+  });
+
+  it('rejects a source before a portfolio-grounded text part', () => {
+    expect(() => parseNdjsonEvents([
+      '{"request_id":"r-1","sequence":1,"type":"start","protocol_version":"2","content_version":"v1"}',
+      '{"request_id":"r-1","sequence":2,"type":"part","part":{"type":"source","record_id":"p1","label":"Proyecto"}}',
+      '{"request_id":"r-1","sequence":3,"type":"part","part":{"type":"text","grounding":"portfolio","text":"Texto","record_ids":["p1"],"claim_ids":["c1"]}}',
+      '{"request_id":"r-1","sequence":4,"type":"done","protocol_version":"2","content_version":"v1","model":"fake","usage":{"total_tokens":0}}',
+    ].join('\n'))).toThrow('invalid-provider-output');
+  });

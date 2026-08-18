@@ -14,7 +14,8 @@ Candidate = dict[str, object]
 _GROUNDED_SPANISH_INSTRUCTIONS = (
     "Respondé en español. Usá únicamente la evidencia provista en la entrada; "
     "no inventes datos ni referencias. Devolvé solamente partes candidatas que "
-    "cumplan el esquema solicitado."
+    "cumplan el esquema solicitado. Para cada parte de texto usá grounding "
+    "igual a portfolio."
 )
 
 _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
@@ -26,10 +27,11 @@ _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
                 "properties": {
                     "type": {"type": "string", "const": "text"},
                     "text": {"type": "string"},
+                    "grounding": {"type": "string", "const": "portfolio"},
                     "record_ids": {"type": "array", "items": {"type": "string"}},
                     "claim_ids": {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["type", "text", "record_ids", "claim_ids"],
+                "required": ["type", "text", "grounding", "record_ids", "claim_ids"],
                 "additionalProperties": False,
             },
             {
