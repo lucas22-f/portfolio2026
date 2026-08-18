@@ -308,7 +308,12 @@ def test_openai_provider_blocks_usage_over_limits_without_returning_raw_output()
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return 200, json.dumps(
             {
-                "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"parts":[]}'}]}],
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                    }
+                ],
                 "usage": {"input_tokens": 11, "output_tokens": 1},
             }
         ).encode()
@@ -634,7 +639,12 @@ def test_openai_provider_rejects_output_over_aggregate_turn_budget() -> None:
             "usage": {"input_tokens": 1, "output_tokens": 3},
         },
         {
-            "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"parts":[]}'}]}],
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                }
+            ],
             "usage": {"input_tokens": 1, "output_tokens": 2},
         },
     ]
@@ -682,7 +692,12 @@ def test_openai_provider_rejects_negative_reported_usage(usage: dict[str, int]) 
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return 200, json.dumps(
             {
-                "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"parts":[]}'}]}],
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                    }
+                ],
                 "usage": usage,
             }
         ).encode()
