@@ -390,7 +390,7 @@ def create_app(
             parts = []
             for candidate in candidates:
                 try:
-                    candidate = _validate_retrieval_references(
+                    validated_candidate = _validate_retrieval_references(
                         candidate,
                         retrieved_record_ids,
                         retrieved_claim_ids,
@@ -410,7 +410,7 @@ def create_app(
                         )
                     raise
                 try:
-                    parts.append(validate_candidate(candidate, bundle))
+                    parts.append(validate_candidate(validated_candidate, bundle))
                 except CandidateValidationError as error:
                     if app.debug:
                         logger.warning(
