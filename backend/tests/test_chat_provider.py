@@ -63,7 +63,7 @@ def test_openai_provider_posts_only_controlled_payload_and_returns_candidates() 
                         "content": [
                             {
                                 "type": "output_text",
-                                "text": '[{"type":"source","record_id":"project"}]',
+                                "text": '{"parts":[{"type":"source","record_id":"project"}]}',
                             }
                         ],
                     }
@@ -91,6 +91,29 @@ def test_openai_provider_posts_only_controlled_payload_and_returns_candidates() 
     assert received["body"]["tools"][0]["name"] == "search_portfolio"
 
 
+def test_openai_provider_uses_supported_strict_tool_string_schema() -> None:
+    received: dict[str, Any] = {}
+
+    def transport(_: str, body: bytes, __: dict[str, str], ___: float) -> tuple[int, bytes]:
+        received.update(body=json.loads(body))
+        return 200, json.dumps(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                    }
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 3},
+            }
+        ).encode()
+
+    OpenAIChatProvider(api_key="test-secret", transport=transport).generate("Hola")
+
+    query_schema = received["body"]["tools"][0]["parameters"]["properties"]["query"]
+    assert query_schema == {"type": "string"}
+
+
 def test_openai_provider_finds_output_text_after_reasoning_item() -> None:
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return 200, json.dumps(
@@ -102,7 +125,7 @@ def test_openai_provider_finds_output_text_after_reasoning_item() -> None:
                         "content": [
                             {
                                 "type": "output_text",
-                                "text": '[{"type":"source","record_id":"project"}]',
+                                "text": '{"parts":[{"type":"source","record_id":"project"}]}',
                             }
                         ],
                     },
@@ -147,7 +170,7 @@ def test_openai_provider_requests_spanish_grounded_structured_candidate_parts() 
                 "output": [
                     {
                         "type": "message",
-                        "content": [{"type": "output_text", "text": "[]"}],
+                        "content": [{"type": "output_text", "text": '{"parts":[]}'}],
                     }
                 ],
                 "usage": {"input_tokens": 4, "output_tokens": 3},
@@ -163,50 +186,129 @@ def test_openai_provider_requests_spanish_grounded_structured_candidate_parts() 
         "name": "candidate_parts",
         "strict": True,
         "schema": {
-            "type": "array",
-            "items": {
-                "oneOf": [
-                    {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "const": "text"},
-                            "text": {"type": "string"},
-                            "grounding": {"type": "string", "enum": ["general", "portfolio"]},
-                            "record_ids": {"type": "array", "items": {"type": "string"}},
-                            "claim_ids": {"type": "array", "items": {"type": "string"}},
-                        },
-                        "required": ["type", "text", "grounding", "record_ids", "claim_ids"],
-                        "additionalProperties": False,
+            "type": "object",
+            "properties": {
+                "parts": {
+                    "type": "array",
+                    "items": {
+                        "anyOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "type": {"type": "string", "const": "text"},
+                                    "text": {"type": "string"},
+                                    "grounding": {
+                                        "type": "string",
+                                        "enum": ["general", "portfolio"],
+                                    },
+                                    "record_ids": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "claim_ids": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                                "required": [
+                                    "type",
+                                    "text",
+                                    "grounding",
+                                    "record_ids",
+                                    "claim_ids",
+                                ],
+                                "additionalProperties": False,
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "type": {"type": "string", "const": "source"},
+                                    "record_id": {"type": "string"},
+                                },
+                                "required": ["type", "record_id"],
+                                "additionalProperties": False,
+                            },
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "type": {"type": "string", "const": "project-card"},
+                                    "record_id": {"type": "string"},
+                                },
+                                "required": ["type", "record_id"],
+                                "additionalProperties": False,
+                            },
+                        ]
                     },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "const": "source"},
-                            "record_id": {"type": "string"},
-                        },
-                        "required": ["type", "record_id"],
-                        "additionalProperties": False,
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "const": "project-card"},
-                            "record_id": {"type": "string"},
-                        },
-                        "required": ["type", "record_id"],
-                        "additionalProperties": False,
-                    },
-                ]
+                }
             },
+            "required": ["parts"],
+            "additionalProperties": False,
         },
     }
+
+
+def test_openai_provider_uses_supported_anyof_for_candidate_part_variants() -> None:
+    received: dict[str, Any] = {}
+
+    def transport(_: str, body: bytes, __: dict[str, str], ___: float) -> tuple[int, bytes]:
+        received.update(body=json.loads(body))
+        return 200, json.dumps(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": '{"parts":[]}'}],
+                    }
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 3},
+            }
+        ).encode()
+
+    OpenAIChatProvider(api_key="test-secret", transport=transport).generate("Hola")
+
+    part_variants = received["body"]["text"]["format"]["schema"]["properties"]["parts"]["items"]
+    assert "oneOf" not in part_variants
+    assert [variant["properties"]["type"]["const"] for variant in part_variants["anyOf"]] == [
+        "text",
+        "source",
+        "project-card",
+    ]
+
+
+@pytest.mark.parametrize(
+    "structured_output",
+    [
+        "[]",
+        "{}",
+        '{"parts":{}}',
+        '{"parts":[],"extra":true}',
+    ],
+)
+def test_openai_provider_rejects_malformed_structured_output_wrapper(
+    structured_output: str,
+) -> None:
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        return 200, json.dumps(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": structured_output}],
+                    }
+                ],
+                "usage": {"input_tokens": 4, "output_tokens": 3},
+            }
+        ).encode()
+
+    with pytest.raises(ProviderFailure, match="invalid-provider-output"):
+        OpenAIChatProvider(api_key="test-secret", transport=transport).generate("Hola")
 
 
 def test_openai_provider_blocks_usage_over_limits_without_returning_raw_output() -> None:
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return 200, json.dumps(
             {
-                "output": [{"type": "message", "content": [{"type": "output_text", "text": "[]"}]}],
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"parts":[]}'}]}],
                 "usage": {"input_tokens": 11, "output_tokens": 1},
             }
         ).encode()
@@ -255,8 +357,19 @@ def test_openai_provider_maps_non_utf8_success_response_to_safe_failure() -> Non
     assert error.value.retryable is False
 
 
-@pytest.mark.parametrize("status", [429, 500])
-def test_openai_provider_maps_http_failures_without_exposing_response(status: int) -> None:
+@pytest.mark.parametrize(
+    ("status", "code", "category"),
+    [
+        (401, "provider-unavailable", "auth"),
+        (403, "provider-unavailable", "auth"),
+        (429, "rate-limited", "rate-limit"),
+        (400, "provider-unavailable", "request-rejected"),
+        (500, "provider-unavailable", "upstream"),
+    ],
+)
+def test_openai_provider_maps_http_failures_to_safe_diagnostic_categories(
+    status: int, code: str, category: str
+) -> None:
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return status, b'{"error":{"message":"provider raw response"}}'
 
@@ -265,8 +378,9 @@ def test_openai_provider_maps_http_failures_without_exposing_response(status: in
     with pytest.raises(ProviderFailure) as error:
         provider.generate("Hola")
 
-    assert error.value.code == ("rate-limited" if status == 429 else "provider-unavailable")
+    assert error.value.code == code
     assert error.value.retryable is True
+    assert error.value.diagnostic_category == category
     assert "raw response" not in str(error.value)
 
 
@@ -280,8 +394,23 @@ def test_openai_provider_maps_transport_failure_without_exposing_inputs() -> Non
         provider.generate("private prompt")
 
     assert error.value.code == "provider-timeout"
+    assert error.value.diagnostic_category == "transport"
     assert "private" not in str(error.value)
     assert "test-secret" not in str(error.value)
+
+
+def test_openai_provider_maps_network_error_to_transport_diagnostic_category() -> None:
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        raise OSError("private network detail")
+
+    provider = OpenAIChatProvider(api_key="test-secret", transport=transport)
+
+    with pytest.raises(ProviderFailure) as error:
+        provider.generate("private prompt")
+
+    assert error.value.code == "provider-unavailable"
+    assert error.value.diagnostic_category == "transport"
+    assert "private" not in str(error.value)
 
 
 def test_openai_provider_returns_one_valid_portfolio_tool_call() -> None:
@@ -372,8 +501,8 @@ def test_openai_provider_accumulates_second_turn_usage() -> None:
                         {
                             "type": "output_text",
                             "text": (
-                                '[{"type":"text","text":"Lucas trabaja en MercadoLibre.",'
-                                '"grounding":"portfolio","record_ids":["r"],"claim_ids":["c"]}]'
+                                '{"parts":[{"type":"text","text":"Lucas trabaja en MercadoLibre.",'
+                                '"grounding":"portfolio","record_ids":["r"],"claim_ids":["c"]}]}'
                             ),
                         }
                     ],
@@ -505,7 +634,7 @@ def test_openai_provider_rejects_output_over_aggregate_turn_budget() -> None:
             "usage": {"input_tokens": 1, "output_tokens": 3},
         },
         {
-            "output": [{"type": "message", "content": [{"type": "output_text", "text": "[]"}]}],
+            "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"parts":[]}'}]}],
             "usage": {"input_tokens": 1, "output_tokens": 2},
         },
     ]
@@ -553,7 +682,7 @@ def test_openai_provider_rejects_negative_reported_usage(usage: dict[str, int]) 
     def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
         return 200, json.dumps(
             {
-                "output": [{"type": "message", "content": [{"type": "output_text", "text": "[]"}]}],
+                "output": [{"type": "message", "content": [{"type": "output_text", "text": '{"parts":[]}'}]}],
                 "usage": usage,
             }
         ).encode()

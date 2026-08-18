@@ -212,6 +212,30 @@ def test_stream_maps_provider_and_invalid_output_failures_without_leaking_inputs
     assert "private prompt" not in json.dumps(invalid_events)
 
 
+def test_stream_logs_safe_provider_diagnostic_category_by_request_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    request_id = "c-auth"
+    response = _client(
+        provider=FakeProvider(
+            failure=ProviderFailure(
+                "provider-unavailable", retryable=True, diagnostic_category="auth"
+            )
+        )
+    ).post(
+        "/api/v1/chat/stream",
+        json={"message": "private prompt", "locale": "es", "client_request_id": request_id},
+    )
+
+    assert _events(response)[1]["code"] == "provider-unavailable"
+    provider_log = next(
+        record for record in caplog.records if record.message.startswith("chat_provider_failed")
+    )
+    assert f"request_id={request_id}" in provider_log.message
+    assert "diagnostic_category=auth" in provider_log.message
+    assert "private prompt" not in provider_log.message
+
+
 @pytest.mark.parametrize(
     ("code", "message", "retryable"),
     [
@@ -313,25 +337,13 @@ def test_stream_offloads_provider_and_sends_only_retrieved_public_evidence(
     assert "source_text" not in evidence
 
 
-def test_stream_returns_general_fallback_after_tool_has_no_results() -> None:
+def test_stream_returns_deterministic_general_fallback_after_tool_has_no_results() -> None:
     provider = RecordingProvider(
         [
             ProviderResult(
                 [],
                 total_tokens=3,
                 tool_call=ToolCall("tema inexistente", "call-1", '{"query":"tema inexistente"}'),
-            ),
-            ProviderResult(
-                [
-                    {
-                        "type": "text",
-                        "text": "No tengo datos sobre ese tema.",
-                        "grounding": "general",
-                        "record_ids": [],
-                        "claim_ids": [],
-                    }
-                ],
-                total_tokens=7,
             ),
         ]
     )
@@ -343,9 +355,16 @@ def test_stream_returns_general_fallback_after_tool_has_no_results() -> None:
         )
     )
 
+    assert len(provider.calls) == 1
     assert [event["type"] for event in events] == ["start", "part", "done"]
-    assert events[1]["part"]["grounding"] == "general"  # type: ignore[index]
-    assert events[-1]["usage"] == {"total_tokens": 7}
+    assert events[1]["part"] == {
+        "type": "text",
+        "text": "No encontré información del portfolio sobre ese tema.",
+        "grounding": "general",
+        "record_ids": [],
+        "claim_ids": [],
+    }
+    assert events[-1]["usage"] == {"total_tokens": 3}
 
 
 def test_stream_rejects_bundle_known_references_outside_retrieval_results() -> None:

@@ -40,6 +40,7 @@ _PROVIDER_MESSAGES = {
     "limit-exceeded": ("La solicitud supera el límite permitido.", False),
     "invalid-provider-output": ("No pude validar la respuesta.", False),
 }
+_NO_PORTFOLIO_RESULTS_MESSAGE = "No encontré información del portfolio sobre ese tema."
 logger = logging.getLogger(__name__)
 
 
@@ -237,6 +238,32 @@ def create_app(
                         len(events),
                     )
                     return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
+                if not outcome.results:
+                    parts = [
+                        validate_candidate(
+                            {
+                                "type": "text",
+                                "text": _NO_PORTFOLIO_RESULTS_MESSAGE,
+                                "grounding": "general",
+                                "record_ids": [],
+                                "claim_ids": [],
+                            },
+                            bundle,
+                        )
+                    ]
+                    events = build_event_stream(
+                        request_id,
+                        bundle.portfolio.content_version,
+                        validated_parts=parts,
+                        model=provider_model,
+                        usage={"total_tokens": completion.total_tokens},
+                    )
+                    logger.info(
+                        "chat_stream_completed request_id=%s terminal_state=done event_count=%d",
+                        request_id,
+                        len(events),
+                    )
+                    return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
                 retrieved_record_ids = {result.record_id for result in outcome.results}
                 retrieved_claim_ids = {
                     claim_id for result in outcome.results for claim_id in result.matched_claims
@@ -310,7 +337,15 @@ def create_app(
                 model=provider_model,
             )
         except ProviderFailure as error:
-            logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
+            if error.diagnostic_category is None:
+                logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
+            else:
+                logger.warning(
+                    "chat_provider_failed request_id=%s code=%s diagnostic_category=%s",
+                    request_id,
+                    error.code,
+                    error.diagnostic_category,
+                )
             events = build_event_stream(
                 request_id,
                 bundle.portfolio.content_version,

@@ -25,41 +25,51 @@ _GROUNDED_SPANISH_INSTRUCTIONS = (
 )
 
 _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
-    "type": "array",
-    "items": {
-        "oneOf": [
-            {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "const": "text"},
-                    "text": {"type": "string"},
-                    "grounding": {"type": "string", "enum": ["general", "portfolio"]},
-                    "record_ids": {"type": "array", "items": {"type": "string"}},
-                    "claim_ids": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["type", "text", "grounding", "record_ids", "claim_ids"],
-                "additionalProperties": False,
+    "type": "object",
+    "properties": {
+        "parts": {
+            "type": "array",
+            "items": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "const": "text"},
+                            "text": {"type": "string"},
+                            "grounding": {
+                                "type": "string",
+                                "enum": ["general", "portfolio"],
+                            },
+                            "record_ids": {"type": "array", "items": {"type": "string"}},
+                            "claim_ids": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["type", "text", "grounding", "record_ids", "claim_ids"],
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "const": "source"},
+                            "record_id": {"type": "string"},
+                        },
+                        "required": ["type", "record_id"],
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "const": "project-card"},
+                            "record_id": {"type": "string"},
+                        },
+                        "required": ["type", "record_id"],
+                        "additionalProperties": False,
+                    },
+                ]
             },
-            {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "const": "source"},
-                    "record_id": {"type": "string"},
-                },
-                "required": ["type", "record_id"],
-                "additionalProperties": False,
-            },
-            {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "const": "project-card"},
-                    "record_id": {"type": "string"},
-                },
-                "required": ["type", "record_id"],
-                "additionalProperties": False,
-            },
-        ]
+        }
     },
+    "required": ["parts"],
+    "additionalProperties": False,
 }
 
 _SEARCH_PORTFOLIO_TOOL: dict[str, object] = {
@@ -69,7 +79,7 @@ _SEARCH_PORTFOLIO_TOOL: dict[str, object] = {
     "strict": True,
     "parameters": {
         "type": "object",
-        "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 500}},
+        "properties": {"query": {"type": "string"}},
         "required": ["query"],
         "additionalProperties": False,
     },
@@ -114,10 +124,31 @@ class ProviderConfigurationError(ValueError):
 class ProviderFailure(RuntimeError):
     """A recoverable provider error that never contains provider payloads."""
 
-    def __init__(self, code: str, *, retryable: bool) -> None:
+    def __init__(
+        self,
+        code: str,
+        *,
+        retryable: bool,
+        diagnostic_category: str | None = None,
+    ) -> None:
         self.code = code
         self.retryable = retryable
+        self.diagnostic_category = diagnostic_category
         super().__init__(code)
+
+
+def _http_failure(status: int) -> ProviderFailure:
+    """Classify an HTTP outcome without retaining provider response data."""
+
+    if status in {401, 403}:
+        return ProviderFailure("provider-unavailable", retryable=True, diagnostic_category="auth")
+    if status == 429:
+        return ProviderFailure("rate-limited", retryable=True, diagnostic_category="rate-limit")
+    if 400 <= status < 500:
+        return ProviderFailure(
+            "provider-unavailable", retryable=True, diagnostic_category="request-rejected"
+        )
+    return ProviderFailure("provider-unavailable", retryable=True, diagnostic_category="upstream")
 
 
 def _parse_tool_call(raw_call: Mapping[str, object]) -> ToolCall:
@@ -316,14 +347,18 @@ class OpenAIChatProvider(ChatProvider):
                 self._RESPONSES_URL, body, headers, self._limits.timeout_seconds
             )
         except TimeoutError:
-            raise ProviderFailure("provider-timeout", retryable=True) from None
-        except (OSError, URLError, HTTPError):
-            raise ProviderFailure("provider-unavailable", retryable=True) from None
+            raise ProviderFailure(
+                "provider-timeout", retryable=True, diagnostic_category="transport"
+            ) from None
+        except HTTPError as error:
+            raise _http_failure(error.code) from None
+        except (OSError, URLError):
+            raise ProviderFailure(
+                "provider-unavailable", retryable=True, diagnostic_category="transport"
+            ) from None
 
-        if status == 429:
-            raise ProviderFailure("rate-limited", retryable=True)
         if status < 200 or status >= 300:
-            raise ProviderFailure("provider-unavailable", retryable=True)
+            raise _http_failure(status)
         return self._parse_response(
             response,
             prior_input_tokens=prior_input_tokens,
@@ -400,10 +435,17 @@ class OpenAIChatProvider(ChatProvider):
         if len(text_parts) != 1:
             raise ProviderFailure("invalid-provider-output", retryable=False)
         try:
-            candidates = json.loads(text_parts[0])
+            structured_output = json.loads(text_parts[0])
         except (TypeError, json.JSONDecodeError):
             raise ProviderFailure("invalid-provider-output", retryable=False) from None
-        if not isinstance(candidates, list) or not all(
+        if (
+            not isinstance(structured_output, dict)
+            or set(structured_output) != {"parts"}
+            or not isinstance(structured_output["parts"], list)
+        ):
+            raise ProviderFailure("invalid-provider-output", retryable=False)
+        candidates = structured_output["parts"]
+        if not all(
             isinstance(item, dict) for item in candidates
         ):
             raise ProviderFailure("invalid-provider-output", retryable=False)
