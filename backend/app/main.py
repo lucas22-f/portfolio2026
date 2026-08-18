@@ -283,7 +283,8 @@ def create_app(
             if completion.tool_call is not None:
                 if app.debug:
                     logger.info(
-                        "chat_debug_route_selected request_id=%s route=portfolio_rag tool=search_portfolio query=%r call_id=%s",
+                        "chat_debug_route_selected request_id=%s route=portfolio_rag "
+                        "tool=search_portfolio query=%r call_id=%s",
                         request_id,
                         completion.tool_call.query,
                         completion.tool_call.call_id,
@@ -298,7 +299,8 @@ def create_app(
                 )
                 if app.debug:
                     logger.info(
-                        "chat_debug_retrieval_outcome request_id=%s query=%r classification=%s result_count=%d record_ids=%s",
+                        "chat_debug_retrieval_outcome request_id=%s query=%r "
+                        "classification=%s result_count=%d record_ids=%s",
                         request_id,
                         completion.tool_call.query,
                         outcome.classification,
@@ -372,7 +374,8 @@ def create_app(
             usage = {"total_tokens": getattr(completion, "total_tokens", 0)}
             if app.debug and retrieved_record_ids:
                 logger.info(
-                    "chat_debug_rag_response_received request_id=%s candidate_count=%d total_tokens=%d",
+                    "chat_debug_rag_response_received request_id=%s "
+                    "candidate_count=%d total_tokens=%d",
                     request_id,
                     len(candidates),
                     usage["total_tokens"],
