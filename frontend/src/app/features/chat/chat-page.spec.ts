@@ -161,13 +161,31 @@ describe('ChatPage', () => {
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
 
-    expect(page.querySelector('section')?.classList.contains('w-[min(100%_-_2rem,_52rem)]')).toBe(
-      true,
-    );
-    expect(page.querySelector('section')?.classList.contains('sm:w-[min(100%_-_4rem,_52rem)]')).toBe(
-      true,
-    );
-    expect(page.querySelector('textarea')?.classList.contains('min-h-28')).toBe(true);
+    expect(page.querySelector('section')?.classList.contains('h-svh')).toBe(true);
+    expect(page.querySelector('section > div')?.classList.contains('max-w-4xl')).toBe(true);
+    expect(page.querySelector('section > div')?.classList.contains('sm:px-8')).toBe(true);
+    expect(page.querySelector('textarea')?.classList.contains('min-h-24')).toBe(true);
     expect(page.querySelector('button[type="submit"]')?.classList.contains('min-h-11')).toBe(true);
+  });
+
+  it('keeps the assistant as a viewport-bound layout with an internal transcript scroller', async () => {
+    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+
+    expect(page.querySelector('[data-testid="chat-viewport"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="chat-transcript"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="chat-composer"]')).not.toBeNull();
+    expect(page.querySelector('[data-testid="chat-viewport"]')?.classList.contains('h-svh')).toBe(
+      true,
+    );
+    expect(page.querySelector('[data-testid="chat-transcript"]')?.classList.contains('overflow-y-auto')).toBe(
+      true,
+    );
   });
 });

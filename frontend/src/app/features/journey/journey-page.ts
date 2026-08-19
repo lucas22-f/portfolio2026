@@ -232,49 +232,29 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         </div>
       </section>
 
-      <section id="assistant" #journeyStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="assistant-title">
-        <div class="grid min-h-full content-center py-8 sm:py-12">
-          <div class="max-w-2xl border-y border-border p-6 opacity-0 translate-y-4 transition-[opacity,transform] duration-300 ease-out sm:ml-auto sm:p-12 motion-reduce:translate-y-0 motion-reduce:transition-none" [class.opacity-100]="isVisible()" [class.translate-y-0]="isVisible()">
-            <h2 id="assistant-title" tabindex="-1" class="m-0 text-4xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:text-6xl">Asistente</h2>
+      <section id="assistant" #journeyStep class="journey-section relative h-svh overflow-hidden scroll-mt-0" aria-labelledby="assistant-title">
         @if (assistantUnlocked()) {
-          <button hlmBtn variant="outline" class="cursor-pointer mt-5 min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">
-            Volver al asistente
-          </button>
+          <h2 id="assistant-title" class="sr-only !absolute">Asistente</h2>
+          <button hlmBtn variant="outline" class="sr-only !absolute focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:min-h-11" data-testid="reset-journey" type="button" (click)="resetJourney()">Reiniciar recorrido</button>
+          <button hlmBtn variant="outline" class="sr-only !absolute focus:not-sr-only focus:absolute focus:right-4 focus:top-4 focus:z-10 focus:min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">Volver al asistente</button>
           <app-chat-page [focusOnEntry]="true" />
-        } @else if (progress() >= 3) {
-          <p>Completaste el recorrido. Ya podés abrir el chat.</p>
-          <button hlmBtn class="cursor-pointer mt-5 min-h-11" data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">
-            Abrir el chat
-          </button>
         } @else {
-          <p class="mt-5 max-w-xl text-lg leading-relaxed text-(--color-text)">
-            Recorré las secciones anteriores para habilitar el chat.
-          </p>
-          <button
-            hlmBtn
-            variant="outline"
-            class="cursor-pointer mt-5 min-h-11"
-            data-testid="return-intro"
-            type="button"
-            (click)="focusFragment('intro')"
-          >
-            Volver al inicio
-          </button>
-          }
-          @if (progress() === 3) {
-            <button
-              hlmBtn
-              variant="outline"
-              class="cursor-pointer mt-4 min-h-11"
-              data-testid="reset-journey"
-              type="button"
-              (click)="resetJourney()"
-            >
-              Reiniciar recorrido
-            </button>
-          }
+          <div class="grid min-h-full content-center py-8 sm:py-12">
+            <div class="max-w-2xl border-y border-border p-6 opacity-0 translate-y-4 transition-[opacity,transform] duration-300 ease-out sm:ml-auto sm:p-12 motion-reduce:translate-y-0 motion-reduce:transition-none" [class.opacity-100]="isVisible()" [class.translate-y-0]="isVisible()">
+              <h2 id="assistant-title" tabindex="-1" class="m-0 text-4xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:text-6xl">Asistente</h2>
+              @if (progress() >= 3) {
+                <p>Completaste el recorrido. Ya podés abrir el chat.</p>
+                <button hlmBtn class="cursor-pointer mt-5 min-h-11" data-testid="unlock-assistant" type="button" (click)="unlockAssistant()">Abrir el chat</button>
+              } @else {
+                <p class="mt-5 max-w-xl text-lg leading-relaxed text-(--color-text)">Recorré las secciones anteriores para habilitar el chat.</p>
+                <button hlmBtn variant="outline" class="cursor-pointer mt-5 min-h-11" data-testid="return-intro" type="button" (click)="focusFragment('intro')">Volver al inicio</button>
+              }
+              @if (progress() === 3) {
+                <button hlmBtn variant="outline" class="cursor-pointer mt-4 min-h-11" data-testid="reset-journey" type="button" (click)="resetJourney()">Reiniciar recorrido</button>
+              }
+            </div>
           </div>
-        </div>
+        }
       </section>
     </main>
   `,
