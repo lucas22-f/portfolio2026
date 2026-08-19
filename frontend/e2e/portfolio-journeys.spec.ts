@@ -103,7 +103,7 @@ test('renders a mocked grounded answer with its source and project card', async 
   await expect(page.getByText('Lucas implementó sistemas RAG sobre Fury.')).toBeVisible();
   await expect(page.getByText('Fuente: CV, página 1')).toBeVisible();
   await expect(
-    page.getByRole('region', { name: 'Respuesta del asistente' }).getByRole('heading', {
+    page.getByRole('log', { name: 'Respuesta del asistente' }).getByRole('heading', {
       name: 'Sistemas RAG sobre Fury',
     }),
   ).toBeVisible();
