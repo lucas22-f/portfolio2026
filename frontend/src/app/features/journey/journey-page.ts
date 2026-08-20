@@ -235,9 +235,8 @@ import { ProjectCard } from '../../shared/project-card/project-card';
       <section id="assistant" #journeyStep class="journey-section relative h-svh overflow-hidden scroll-mt-0" aria-labelledby="assistant-title">
         @if (assistantUnlocked()) {
           <h2 id="assistant-title" class="sr-only !absolute">Asistente</h2>
-          <button hlmBtn variant="outline" class="sr-only !absolute focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:min-h-11" data-testid="reset-journey" type="button" (click)="resetJourney()">Reiniciar recorrido</button>
           <button hlmBtn variant="outline" class="sr-only !absolute focus:not-sr-only focus:absolute focus:right-4 focus:top-4 focus:z-10 focus:min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">Volver al asistente</button>
-          <app-chat-page [focusOnEntry]="true" />
+          <app-chat-page [focusOnEntry]="true" (returnToIntro)="resetJourney()" />
         } @else {
           <div class="grid min-h-full content-center py-8 sm:py-12">
             <div class="max-w-2xl border-y border-border p-6 opacity-0 translate-y-4 transition-[opacity,transform] duration-300 ease-out sm:ml-auto sm:p-12 motion-reduce:translate-y-0 motion-reduce:transition-none" [class.opacity-100]="isVisible()" [class.translate-y-0]="isVisible()">

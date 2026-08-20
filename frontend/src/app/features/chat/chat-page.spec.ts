@@ -168,6 +168,27 @@ describe('ChatPage', () => {
     expect(page.querySelector('button[type="submit"]')?.classList.contains('min-h-11')).toBe(true);
   });
 
+  it('emits the composer return action without submitting a chat message', async () => {
+    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    let returnCount = 0;
+    fixture.componentInstance.returnToIntro.subscribe(() => { returnCount += 1; });
+    fixture.detectChanges();
+
+    const action = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="reset-journey"]',
+    )!;
+    action.click();
+
+    expect(action.type).toBe('button');
+    expect(action.closest('[data-testid="chat-composer"]')).not.toBeNull();
+    expect(returnCount).toBe(1);
+  });
+
   it('keeps the assistant as a viewport-bound layout with an internal transcript scroller', async () => {
     const client = { checkCompatibility: async () => true, stream: async () => undefined };
     await TestBed.configureTestingModule({

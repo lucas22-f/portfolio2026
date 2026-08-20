@@ -321,10 +321,15 @@ describe('JourneyPage', () => {
     expect(page.querySelector('[data-testid="reset-journey"]')).toBeNull();
   });
 
-  it('keeps the reset control available after the assistant has been unlocked', async () => {
+  it('returns from the chat composer to intro and ends the active chat session', async () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
+    const intro = page.querySelector<HTMLElement>('#intro')!;
+    const scrollCalls: ScrollIntoViewOptions[] = [];
+    intro.scrollIntoView = (options?: ScrollIntoViewOptions) => {
+      scrollCalls.push(options ?? {});
+    };
 
     page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
     fixture.detectChanges();
@@ -336,7 +341,21 @@ describe('JourneyPage', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(page.querySelector('[data-testid="reset-journey"]')).not.toBeNull();
+    const returnToIntro = page.querySelector<HTMLButtonElement>('[data-testid="reset-journey"]')!;
+    expect(returnToIntro.textContent).toContain('Volver al inicio');
+    expect(returnToIntro.closest('[data-testid="chat-composer"]')).not.toBeNull();
+    expect(page.querySelector('#assistant > [data-testid="reset-journey"]')).toBeNull();
+    expect(page.querySelector('app-chat-page')).not.toBeNull();
+
+    returnToIntro.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.progress()).toBe(0);
+    expect(fixture.componentInstance.assistantUnlocked()).toBe(false);
+    expect(page.querySelector('app-chat-page')).toBeNull();
+    expect(scrollCalls.at(-1)).toEqual({ behavior: 'smooth', block: 'start' });
+    expect(document.activeElement).toBe(page.querySelector('#journey-title'));
   });
 
   it('moves focus to the next narrative section after a Continue action', async () => {

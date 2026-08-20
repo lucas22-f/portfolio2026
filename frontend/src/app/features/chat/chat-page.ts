@@ -5,6 +5,7 @@ import {
   ElementRef,
   Input,
   inject,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
@@ -81,7 +82,7 @@ import {
           <div class="mx-auto grid w-full max-w-3xl gap-3 rounded-xl border border-input bg-card p-3 shadow-sm">
             <label class="sr-only" for="chat-message">Tu consulta</label>
             <textarea id="chat-message" name="message" class="min-h-24 w-full resize-none bg-transparent px-1 text-[var(--color-text)] outline-none placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50" placeholder="Escribí tu consulta…" [(ngModel)]="message" [disabled]="state().status === 'streaming' || compatible() === false" [attr.disabled]="compatible() === false ? '' : null" rows="3" required></textarea>
-            <div class="flex items-center justify-between gap-3"><p class="m-0 text-xs text-muted-foreground">Usá el botón para enviar.</p><button hlmBtn class="min-h-11 shrink-0" type="submit" [disabled]="!message.trim() || state().status === 'streaming' || compatible() === false">{{ state().status === 'streaming' ? 'Consultando…' : 'Enviar consulta' }}</button></div>
+            <div class="flex flex-wrap items-center justify-between gap-3"><p class="m-0 text-xs text-muted-foreground">Usá el botón para enviar.</p><div class="flex items-center gap-2"><button hlmBtn variant="outline" class="min-h-11 shrink-0" data-testid="reset-journey" type="button" (click)="returnToIntro.emit()">Volver al inicio</button><button hlmBtn class="min-h-11 shrink-0" type="submit" [disabled]="!message.trim() || state().status === 'streaming' || compatible() === false">{{ state().status === 'streaming' ? 'Consultando…' : 'Enviar consulta' }}</button></div></div>
           </div>
         </form>
       </div>
@@ -92,6 +93,7 @@ import {
 })
 export class ChatPage implements AfterViewInit {
   @Input() focusOnEntry = false;
+  readonly returnToIntro = output<void>();
   private readonly client = inject(ChatClient);
   private readonly heading = viewChild.required<ElementRef<HTMLElement>>('heading');
   readonly state = signal<ChatState>(createChatState());
