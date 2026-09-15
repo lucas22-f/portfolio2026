@@ -296,7 +296,7 @@ def create_app(
             "validate_candidate": validate_candidate,
         }
 
-        async def response_generator() -> AsyncGenerator[bytes, None]:
+        async def response_generator() -> AsyncGenerator[bytes]:
             loop = asyncio.get_running_loop()
             progress: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue(maxsize=128)
 
