@@ -41,13 +41,21 @@ def _client(
 
 
 def _events(response: object) -> list[dict[str, object]]:
-    return [json.loads(frame.splitlines()[1].removeprefix("data: ")) for frame in response.text.split("\n\n") if frame.startswith("event: ")]  # type: ignore[attr-defined]
+    frames = response.text.split("\n\n")  # type: ignore[attr-defined]
+    return [
+        json.loads(frame.splitlines()[1].removeprefix("data: "))
+        for frame in frames
+        if frame.startswith("event: ")
+    ]
 
 
 def _sse_frames(response: object) -> list[tuple[str, dict[str, object]]]:
     frames = [frame for frame in response.text.split("\n\n") if frame]  # type: ignore[attr-defined]
     return [
-        (frame.splitlines()[0].removeprefix("event: "), json.loads(frame.splitlines()[1].removeprefix("data: ")))
+        (
+            frame.splitlines()[0].removeprefix("event: "),
+            json.loads(frame.splitlines()[1].removeprefix("data: ")),
+        )
         for frame in frames
     ]
 

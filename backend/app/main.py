@@ -15,13 +15,13 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from app.application.chat_graph import ChatGraphState, run_chat_graph
 from app.application.chat import (
     CHAT_PROTOCOL_VERSION,
     CandidateValidationError,
     build_event_stream,
     validate_candidate,
 )
+from app.application.chat_graph import ChatGraphState, run_chat_graph
 from app.domain.content import ContentBundle, load_content_bundle
 from app.domain.retrieval import RetrievalOutcome, retrieve_evidence
 from app.infrastructure.chat_provider import (
@@ -66,7 +66,7 @@ def _sse(events: list[dict[str, object]]) -> Iterator[bytes]:
         if not isinstance(event_type, str):
             raise TypeError("chat event type must be a string")
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        yield f"event: {event_type}\ndata: {data}\n\n".encode("utf-8")
+        yield f"event: {event_type}\ndata: {data}\n\n".encode()
 
 def _provider_error(error: ProviderFailure) -> dict[str, object]:
     code = error.code if error.code in _PROVIDER_MESSAGES else "provider-unavailable"
@@ -301,7 +301,14 @@ def create_app(
                 usage["total_tokens"],
             )
         if result.get("refusal"):
-            events = build_event_stream(request_id, bundle.portfolio.content_version, refusal=_refusal("unsafe"), portfolio_search_used=portfolio_search_used, model=provider_model, usage=usage)
+            events = build_event_stream(
+                request_id,
+                bundle.portfolio.content_version,
+                refusal=_refusal("unsafe"),
+                portfolio_search_used=portfolio_search_used,
+                model=provider_model,
+                usage=usage,
+            )
         elif isinstance(error, CandidateValidationError):
             if app.debug:
                 logger.warning(
@@ -319,7 +326,11 @@ def create_app(
                         separators=(",", ":"),
                     ),
                 )
-            logger.warning("chat_provider_output_rejected request_id=%s code=%s", request_id, error.code)
+            logger.warning(
+                "chat_provider_output_rejected request_id=%s code=%s",
+                request_id,
+                error.code,
+            )
             events = build_event_stream(
                 request_id,
                 bundle.portfolio.content_version,
@@ -357,7 +368,14 @@ def create_app(
                 usage=usage,
             )
         else:
-            events = build_event_stream(request_id, bundle.portfolio.content_version, validated_parts=result.get("parts", []), portfolio_search_used=portfolio_search_used, model=provider_model, usage=usage)
+            events = build_event_stream(
+                request_id,
+                bundle.portfolio.content_version,
+                validated_parts=result.get("parts", []),
+                portfolio_search_used=portfolio_search_used,
+                model=provider_model,
+                usage=usage,
+            )
         terminal_state = next(
             (event["type"] for event in reversed(events) if event["type"] in {"error", "refusal"}),
             "done",

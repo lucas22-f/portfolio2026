@@ -16,8 +16,14 @@ from app.infrastructure.chat_provider import ProviderFailure, ProviderResult
 ValidatedPart = TextPart | SourcePart | ProjectCardPart
 ModelInvoker = Callable[..., Awaitable[ProviderResult]]
 Retriever = Callable[[str, ContentBundle], RetrievalOutcome]
-ReferenceValidator = Callable[[Mapping[str, object], set[str], set[str], Mapping[str, set[str]]], Mapping[str, object]]
-EvidenceBuilder = Callable[[ContentBundle, RetrievalOutcome], tuple[dict[str, object], set[str], set[str], dict[str, set[str]]]]
+ReferenceValidator = Callable[
+    [Mapping[str, object], set[str], set[str], Mapping[str, set[str]]],
+    Mapping[str, object],
+]
+EvidenceBuilder = Callable[
+    [ContentBundle, RetrievalOutcome],
+    tuple[dict[str, object], set[str], set[str], dict[str, set[str]]],
+]
 CandidateValidator = Callable[[Mapping[str, object], ContentBundle], ValidatedPart]
 
 
@@ -95,7 +101,10 @@ async def retrieve(state: ChatGraphState) -> dict[str, object]:
             "retrieval_outcome": outcome,
             "retrieval_query": completion.tool_call.query,
         }
-    evidence, record_ids, claim_ids, claims_by_record = state["build_evidence"](state["bundle"], outcome)
+    evidence, record_ids, claim_ids, claims_by_record = state["build_evidence"](
+        state["bundle"],
+        outcome,
+    )
     return {
         "portfolio_search_used": True,
         "public_evidence": evidence,
@@ -117,7 +126,14 @@ def after_retrieval(state: ChatGraphState) -> str:
 async def grounded_answer(state: ChatGraphState) -> dict[str, object]:
     initial = state["initial_completion"]
     try:
-        completion = await _invoke(state, state["message"], state["public_evidence"], initial.tool_call, initial.total_input_tokens, initial.total_output_tokens)
+        completion = await _invoke(
+            state,
+            state["message"],
+            state["public_evidence"],
+            initial.tool_call,
+            initial.total_input_tokens,
+            initial.total_output_tokens,
+        )
         if completion.tool_call is not None:
             raise ProviderFailure("invalid-provider-output", retryable=False)
     except (ProviderFailure, CandidateValidationError) as error:
@@ -127,7 +143,16 @@ async def grounded_answer(state: ChatGraphState) -> dict[str, object]:
 
 async def deterministic_fallback(state: ChatGraphState) -> dict[str, object]:
     initial = state["initial_completion"]
-    part = state["validate_candidate"]({"type": "text", "text": "No encontré información del portfolio sobre ese tema.", "grounding": "general", "record_ids": [], "claim_ids": []}, state["bundle"])
+    part = state["validate_candidate"](
+        {
+            "type": "text",
+            "text": "No encontré información del portfolio sobre ese tema.",
+            "grounding": "general",
+            "record_ids": [],
+            "claim_ids": [],
+        },
+        state["bundle"],
+    )
     return {"parts": [part], "usage": {"total_tokens": initial.total_tokens}}
 
 
@@ -173,9 +198,29 @@ def _graph() -> Any:
     graph.add_node("validate_output", validate_output)
     graph.add_node("finalize", finalize)
     graph.add_edge(START, "validate_safety")
-    graph.add_conditional_edges("validate_safety", after_safety, {"initial_answer": "initial_answer", "finalize": "finalize"})
-    graph.add_conditional_edges("initial_answer", after_initial_answer, {"retrieve": "retrieve", "validate_output": "validate_output", "finalize": "finalize"})
-    graph.add_conditional_edges("retrieve", after_retrieval, {"grounded_answer": "grounded_answer", "fallback": "fallback", "finalize": "finalize"})
+    graph.add_conditional_edges(
+        "validate_safety",
+        after_safety,
+        {"initial_answer": "initial_answer", "finalize": "finalize"},
+    )
+    graph.add_conditional_edges(
+        "initial_answer",
+        after_initial_answer,
+        {
+            "retrieve": "retrieve",
+            "validate_output": "validate_output",
+            "finalize": "finalize",
+        },
+    )
+    graph.add_conditional_edges(
+        "retrieve",
+        after_retrieval,
+        {
+            "grounded_answer": "grounded_answer",
+            "fallback": "fallback",
+            "finalize": "finalize",
+        },
+    )
     graph.add_edge("grounded_answer", "validate_output")
     graph.add_edge("fallback", "finalize")
     graph.add_edge("validate_output", "finalize")
