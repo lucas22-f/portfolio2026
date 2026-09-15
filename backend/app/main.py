@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import AsyncGenerator, Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -267,16 +267,24 @@ def create_app(
             prior_output_tokens: int = 0,
             on_text_delta: Callable[[str], None] | None = None,
         ) -> ProviderResult:
-            args: tuple[object, ...] = (
+            if isinstance(provider, OpenAIChatProvider):
+                return await run_in_threadpool(
+                    provider.generate,
+                    message,
+                    evidence,
+                    tool_call,
+                    prior_input_tokens,
+                    prior_output_tokens,
+                    on_text_delta,
+                )
+            return await run_in_threadpool(
+                provider.generate,
                 message,
                 evidence,
                 tool_call,
                 prior_input_tokens,
                 prior_output_tokens,
             )
-            if isinstance(provider, OpenAIChatProvider):
-                args += (on_text_delta,)
-            return await run_in_threadpool(provider.generate, *args)
 
         state: ChatGraphState = {
             "message": request.message,
@@ -288,7 +296,7 @@ def create_app(
             "validate_candidate": validate_candidate,
         }
 
-        async def response_generator() -> Iterator[bytes]:
+        async def response_generator() -> AsyncGenerator[bytes, None]:
             loop = asyncio.get_running_loop()
             progress: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue(maxsize=128)
 

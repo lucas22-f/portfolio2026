@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -500,10 +500,10 @@ class OpenAIChatProvider(ChatProvider):
                         delta = event.get("delta")
                         if isinstance(delta, str):
                             extractor.feed(delta)
-                    elif event_type == "response.completed" and isinstance(
-                        event.get("response"), Mapping
-                    ):
-                        completed = event["response"]
+                    elif event_type == "response.completed":
+                        response_payload = event.get("response")
+                        if isinstance(response_payload, Mapping):
+                            completed = response_payload
         except TimeoutError:
             raise ProviderFailure(
                 "provider-timeout", retryable=True, diagnostic_category="transport"
@@ -716,7 +716,9 @@ class _StructuredTextDeltaExtractor:
 def _iter_sse_payloads(response: object) -> Iterator[Mapping[str, object]]:
     """Yield JSON payloads from complete SSE data frames."""
     frame: bytes | None = None
-    for line in response:  # type: ignore[union-attr]
+    if not isinstance(response, Iterable):
+        return
+    for line in response:
         if not isinstance(line, bytes):
             continue
         if line in {b"\n", b"\r\n"}:
