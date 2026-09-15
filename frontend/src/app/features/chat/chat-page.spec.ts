@@ -26,7 +26,7 @@ describe('ChatPage', () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '3', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '4', content_version: 'v1' });
         onEvent({
           request_id: 'r-1',
           sequence: 2,
@@ -39,7 +39,7 @@ describe('ChatPage', () => {
             claim_ids: ['c1'],
           },
         });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '3', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '4', content_version: 'v1' });
       },
     };
     await TestBed.configureTestingModule({
@@ -66,9 +66,9 @@ describe('ChatPage', () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '3', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '4', content_version: 'v1' });
         onEvent({ request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '3', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '4', content_version: 'v1' });
       },
     };
     await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
@@ -210,3 +210,4 @@ describe('ChatPage', () => {
     );
   });
 });
+

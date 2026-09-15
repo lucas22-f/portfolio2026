@@ -76,7 +76,7 @@ def test_health_and_metadata_expose_secret_free_compatibility_fields() -> None:
         "app_version": "test-version",
         "content_version": health.json()["content_version"],
         "model": "fake",
-        "protocol_version": "3",
+        "protocol_version": "4",
     }
 
 
@@ -666,3 +666,4 @@ def test_api_v1_metadata_and_done_expose_compatible_contract() -> None:
     assert events[-1]["protocol_version"] == metadata.json()["protocol_version"]
     assert events[-1]["model"] == metadata.json()["model"]
     assert events[-1]["usage"] == {"total_tokens": 0}
+

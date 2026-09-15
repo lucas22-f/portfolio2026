@@ -19,10 +19,10 @@ function response(body: BodyInit): Response {
 }
 
 const start = {
-  request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '3', content_version: CONTENT_VERSION,
+  request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '4', content_version: CONTENT_VERSION,
 } as const;
 const done = {
-  request_id: 'r-1', sequence: 4, type: 'done', protocol_version: '3', content_version: CONTENT_VERSION,
+  request_id: 'r-1', sequence: 4, type: 'done', protocol_version: '4', content_version: CONTENT_VERSION,
   model: 'fake', usage: { total_tokens: 4 },
 } as const;
 
@@ -116,5 +116,33 @@ describe('chat state', () => {
   it('retains validated model and usage from done events', () => {
     const complete = applyChatEvent(applyChatEvent(createChatState(), start), done);
     expect(complete).toMatchObject({ status: 'complete', model: 'fake', usage: { total_tokens: 4 } });
+  });
+});
+
+
+describe('incremental text state', () => {
+  it('appends deltas and clears the in-progress preview once a validated part arrives', () => {
+    const streaming = applyChatEvent(applyChatEvent(createChatState(), start), {
+      request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Hola',
+    });
+    const validated = applyChatEvent(streaming, {
+      request_id: 'r-1', sequence: 3, type: 'part',
+      part: { type: 'text', grounding: 'general', text: 'Hola', record_ids: [], claim_ids: [] },
+    });
+    expect(streaming.streamedText).toBe('Hola');
+    expect(validated.streamedText).toBe('');
+    expect(validated.parts).toHaveLength(1);
+  });
+});
+
+describe('direct incremental SSE ordering', () => {
+  it('accepts direct text deltas before a validated general part', () => {
+    const events = parseSseEvents(sse([
+      start,
+      { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Hola' },
+      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'general', text: 'Hola', record_ids: [], claim_ids: [] } },
+      { ...done, sequence: 4 },
+    ]));
+    expect(events.map((event) => event.type)).toEqual(['start', 'text-delta', 'part', 'done']);
   });
 });

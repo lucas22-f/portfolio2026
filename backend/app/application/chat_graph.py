@@ -53,6 +53,8 @@ class ChatGraphState(TypedDict, total=False):
     retrieval_query: str
     validation_category: str
     invalid_candidate: Mapping[str, object]
+    on_text_delta: Callable[[str], None]
+    on_portfolio_search: Callable[[], None]
 
 
 async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
@@ -78,7 +80,7 @@ def after_safety(state: ChatGraphState) -> str:
 
 async def initial_answer(state: ChatGraphState) -> dict[str, object]:
     try:
-        completion = await _invoke(state, state["message"])
+        completion = await _invoke(state, state["message"], None, None, 0, 0, state.get("on_text_delta"))
     except (ProviderFailure, CandidateValidationError) as error:
         return {"error": error}
     return {"initial_completion": completion, "completion": completion}
@@ -91,6 +93,9 @@ def after_initial_answer(state: ChatGraphState) -> str:
 
 
 async def retrieve(state: ChatGraphState) -> dict[str, object]:
+    callback = state.get("on_portfolio_search")
+    if callback is not None:
+        callback()
     completion = state["initial_completion"]
     assert completion.tool_call is not None
     outcome = state["retrieve_evidence"](completion.tool_call.query, state["bundle"])
@@ -134,6 +139,7 @@ async def grounded_answer(state: ChatGraphState) -> dict[str, object]:
             initial.tool_call,
             initial.total_input_tokens,
             initial.total_output_tokens,
+            state.get("on_text_delta"),
         )
         if completion.tool_call is not None:
             raise ProviderFailure("invalid-provider-output", retryable=False)
@@ -237,3 +243,11 @@ async def run_chat_graph(state: ChatGraphState) -> ChatGraphState:
     if not isinstance(result, dict):
         raise TypeError("compiled chat graph must return a state mapping")
     return cast(ChatGraphState, result)
+
+
+
+
+
+
+
+

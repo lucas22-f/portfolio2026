@@ -1,3 +1,17 @@
 :host {
   display: block;
 }
+
+.chat-stream-caret {
+  display: inline-block;
+  width: 0.45rem;
+  height: 1.05em;
+  margin-left: 0.1rem;
+  vertical-align: -0.15em;
+  background: currentColor;
+  animation: chat-caret 1s steps(1, end) infinite;
+}
+
+@keyframes chat-caret {
+  50% { opacity: 0; }
+}

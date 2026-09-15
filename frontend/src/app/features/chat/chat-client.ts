@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
 import { API_BASE_URL } from '../../core/config/api-base-url';
 
-export const CHAT_PROTOCOL_VERSION = '3';
+export const CHAT_PROTOCOL_VERSION = '4';
 export type TextPart = {
   type: 'text'; text: string; grounding: 'general' | 'portfolio'; record_ids: string[]; claim_ids: string[];
 };
@@ -20,6 +20,7 @@ export type ChatPart = TextPart | SourcePart | ProjectCardPart;
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
   | (EventBase & { type: 'start'; protocol_version: typeof CHAT_PROTOCOL_VERSION; content_version: string })
+  | (EventBase & { type: 'text-delta'; text: string })
   | (EventBase & { type: 'tool'; tool: 'search_portfolio' })
   | (EventBase & { type: 'part'; part: ChatPart })
   | (EventBase & { type: 'refusal' | 'error'; code: string; message: string; retryable: boolean })
@@ -44,6 +45,7 @@ export type ChatState = {
   usage?: ChatUsage;
   terminalOutcome?: 'refusal' | 'error';
   portfolioSearchUsed: boolean;
+  streamedText: string;
 };
 
 const INVALID_OUTPUT = 'invalid-provider-output';
@@ -60,7 +62,7 @@ export class ChatStreamError extends Error {
 }
 
 export function createChatState(): ChatState {
-  return { status: 'idle', parts: [], announcement: '', retryable: false, portfolioSearchUsed: false };
+  return { status: 'idle', parts: [], announcement: '', retryable: false, portfolioSearchUsed: false, streamedText: '' };
 }
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
@@ -79,9 +81,12 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         requestId: event.request_id,
         announcement: 'Recibiendo respuesta.',
       };
+    case 'text-delta':
+      return { ...state, streamedText: state.streamedText + event.text, announcement: 'El asistente está respondiendo.' };
     case 'part':
       return {
         ...state,
+        streamedText: '',
         parts: [...state.parts, event.part],
         announcement: 'Se agregó una respuesta respaldada.',
       };
@@ -102,9 +107,9 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         usage: event.usage,
       };
     case 'refusal':
-      return { ...state, status: 'refused', terminalOutcome: 'refusal', announcement: event.message, retryable: false };
+      return { ...state, streamedText: '', status: 'refused', terminalOutcome: 'refusal', announcement: event.message, retryable: false };
     case 'error':
-      return { ...state, status: 'error', terminalOutcome: 'error', announcement: event.message, retryable: event.retryable };
+      return { ...state, streamedText: '', status: 'error', terminalOutcome: 'error', announcement: event.message, retryable: event.retryable };
   }
 }
 
@@ -124,6 +129,10 @@ export function parseSseEvents(sse: string): ChatEvent[] {
   let portfolioGroundingSeen = false;
   for (const [index, event] of events.slice(1, -1).entries()) {
     if (terminalOutcomeSeen || event.type === 'start' || event.type === 'done') throw invalid();
+    if (event.type === 'text-delta') {
+      if (portfolioGroundingSeen || terminalOutcomeSeen) throw invalid();
+      continue;
+    }
     if (event.type === 'tool') {
       if (portfolioSearchSeen || index !== 0) throw invalid();
       portfolioSearchSeen = true;
@@ -223,6 +232,7 @@ function validateEvent(value: unknown): ChatEvent {
     return raw['protocol_version'] === CHAT_PROTOCOL_VERSION
       ? { ...base, type: 'start', protocol_version: CHAT_PROTOCOL_VERSION, content_version: text(raw['content_version']) }
       : invalid();
+  if (raw['type'] === 'text-delta') return { ...base, type: 'text-delta', text: text(raw['text']) };
   if (raw['type'] === 'tool')
     return raw['tool'] === 'search_portfolio'
       ? { ...base, type: 'tool', tool: 'search_portfolio' }
@@ -314,6 +324,9 @@ export class ChatClient {
       )
         return invalid();
       if (terminalOutcomeSeen && event.type !== 'done') return invalid();
+      if (event.type === 'text-delta' && (portfolioGroundingSeen || terminalOutcomeSeen)) {
+        return invalid();
+      }
       if (event.type === 'tool') {
         if (portfolioSearchSeen || expectedSequence !== 2) return invalid();
         portfolioSearchSeen = true;
@@ -367,3 +380,11 @@ export class ChatClient {
     }
   }
 }
+
+
+
+
+
+
+
+

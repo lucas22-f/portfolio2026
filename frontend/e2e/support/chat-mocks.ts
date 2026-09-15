@@ -16,7 +16,7 @@ export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
       contentType: 'application/json',
       body: JSON.stringify({
         content_version: mock.metadataVersion,
-        protocol_version: mock.metadataProtocolVersion ?? '3',
+        protocol_version: mock.metadataProtocolVersion ?? '4',
       }),
     });
   });
@@ -28,3 +28,5 @@ export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
     await route.fulfill({ contentType: 'text/event-stream', body: mock.stream });
   });
 }
+
+

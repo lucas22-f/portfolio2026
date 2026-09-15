@@ -495,7 +495,7 @@ class TestBuildEventStream:
                 "request_id": "req-tool",
                 "sequence": 1,
                 "type": "start",
-                "protocol_version": "3",
+                "protocol_version": "4",
                 "content_version": "a" * 64,
             },
             {
@@ -516,7 +516,7 @@ class TestBuildEventStream:
                 "request_id": "req-tool",
                 "sequence": 4,
                 "type": "done",
-                "protocol_version": "3",
+                "protocol_version": "4",
                 "content_version": "a" * 64,
                 "model": "fake",
                 "usage": {"total_tokens": 0},
@@ -746,7 +746,7 @@ def test_done_event_includes_model_and_usage() -> None:
         "request_id": "req-usage",
         "sequence": 2,
         "type": "done",
-        "protocol_version": "3",
+        "protocol_version": "4",
         "content_version": "a" * 64,
         "model": "tested-model",
         "usage": {"total_tokens": 7},
@@ -799,5 +799,18 @@ def test_portfolio_text_requires_non_empty_record_and_claim_references() -> None
 
 def test_event_stream_includes_protocol_version_on_metadata_events() -> None:
     events = build_event_stream("req-v2", "a" * 64)
-    assert events[0]["protocol_version"] == "3"
-    assert events[-1]["protocol_version"] == "3"
+    assert events[0]["protocol_version"] == "4"
+    assert events[-1]["protocol_version"] == "4"
+
+
+
+def test_event_stream_emits_text_deltas_before_validated_parts() -> None:
+    events = build_event_stream(
+        request_id="req-delta",
+        content_version="a" * 64,
+        text_deltas=["Hola", " mundo"],
+        validated_parts=[TextPart(text="Hola mundo", grounding="general", record_ids=[], claim_ids=[])],
+    )
+    assert [event["type"] for event in events] == ["start", "text-delta", "text-delta", "part", "done"]
+    assert events[1]["text"] == "Hola"
+

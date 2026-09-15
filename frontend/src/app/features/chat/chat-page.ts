@@ -1,5 +1,6 @@
 import {
   AfterViewInit,
+  OnDestroy,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
@@ -53,6 +54,12 @@ import {
             @if (!state().parts.length && state().status === 'idle' && compatible() !== false) {
               <p class="m-0 max-w-xl text-lg leading-relaxed text-muted-foreground">Escribí una consulta para iniciar la conversación.</p>
             }
+            @if (state().streamedText) {
+              <article data-testid="streaming-assistant-text" class="grid gap-2 rounded-lg border border-border bg-card p-4 sm:p-5" aria-label="Respuesta en progreso">
+                <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">Respuesta en progreso</p>
+                <p class="m-0 leading-relaxed">{{ state().streamedText }}<span class="chat-stream-caret" aria-hidden="true"></span></p>
+              </article>
+            }
             @for (part of state().parts; track $index) {
               @switch (part.type) {
                 @case ('text') {
@@ -91,7 +98,7 @@ import {
   styleUrl: './chat-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ChatPage implements AfterViewInit {
+export class ChatPage implements AfterViewInit, OnDestroy {
   @Input() focusOnEntry = false;
   readonly returnToIntro = output<void>();
   private readonly client = inject(ChatClient);
@@ -100,10 +107,15 @@ export class ChatPage implements AfterViewInit {
   readonly compatible = signal<boolean | undefined>(undefined);
   message = '';
   private lastMessage = '';
+  private activeRequest?: AbortController;
 
   ngAfterViewInit(): void {
     if (this.focusOnEntry) this.focusEntry();
     void this.loadCompatibility();
+  }
+
+  ngOnDestroy(): void {
+    this.activeRequest?.abort();
   }
 
   focusEntry(): void {
@@ -115,6 +127,9 @@ export class ChatPage implements AfterViewInit {
   }
 
   async submit(): Promise<void> {
+    this.activeRequest?.abort();
+    const controller = new AbortController();
+    this.activeRequest = controller;
     this.lastMessage = this.message.trim();
     if (!this.lastMessage || this.compatible() === false) return;
     this.state.set({
@@ -125,8 +140,13 @@ export class ChatPage implements AfterViewInit {
     try {
       await this.client.stream(this.lastMessage, (event) =>
         this.state.update((current) => applyChatEvent(current, event)),
+        controller.signal,
       );
     } catch (error) {
+      if (controller.signal.aborted) {
+        this.state.set(createChatState());
+        return;
+      }
       const streamError =
         error instanceof ChatStreamError ||
         (typeof error === 'object' && error !== null && 'code' in error && 'retryable' in error);
@@ -152,3 +172,5 @@ export class ChatPage implements AfterViewInit {
     return this.submit();
   }
 }
+
+

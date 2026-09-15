@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.domain.content import ContentBundle, PortfolioRecord, ProjectLink
 
-CHAT_PROTOCOL_VERSION: Literal["3"] = "3"
+CHAT_PROTOCOL_VERSION: Literal["4"] = "4"
 
 # ---------------------------------------------------------------------------
 # Exception
@@ -62,8 +62,17 @@ class StartEvent(BaseModel):
     request_id: str
     sequence: int
     type: Literal["start"] = "start"
-    protocol_version: Literal["3"] = CHAT_PROTOCOL_VERSION
+    protocol_version: Literal["4"] = CHAT_PROTOCOL_VERSION
     content_version: str
+
+
+class TextDeltaEvent(BaseModel):
+    """Actual provider text progress; never carries references or cards."""
+
+    request_id: str
+    sequence: int
+    type: Literal["text-delta"] = "text-delta"
+    text: str
 
 
 class PartEvent(BaseModel):
@@ -104,7 +113,7 @@ class DoneEvent(BaseModel):
     request_id: str
     sequence: int
     type: Literal["done"] = "done"
-    protocol_version: Literal["3"] = CHAT_PROTOCOL_VERSION
+    protocol_version: Literal["4"] = CHAT_PROTOCOL_VERSION
     content_version: str
     model: str
     usage: dict[str, int]
@@ -302,6 +311,7 @@ def build_event_stream(
     content_version: str,
     *,
     validated_parts: list[TextPart | SourcePart | ProjectCardPart] | None = None,
+    text_deltas: list[str] | None = None,
     refusal: dict[str, object] | None = None,
     error: dict[str, object] | None = None,
     portfolio_search_used: bool = False,
@@ -325,6 +335,17 @@ def build_event_stream(
             content_version=content_version,
         ).model_dump(mode="json")
     )
+
+    for delta in text_deltas or ():
+        if not isinstance(delta, str) or not delta:
+            raise CandidateValidationError(
+                code="invalid-provider-output",
+                message="No pude validar la respuesta.",
+            )
+        sequence += 1
+        events.append(
+            TextDeltaEvent(request_id=request_id, sequence=sequence, text=delta).model_dump(mode="json")
+        )
 
     if portfolio_search_used:
         sequence += 1
@@ -386,3 +407,5 @@ def build_event_stream(
     )
 
     return events
+
+

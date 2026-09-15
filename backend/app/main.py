@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -265,15 +266,12 @@ def create_app(
             tool_call: ToolCall | None = None,
             prior_input_tokens: int = 0,
             prior_output_tokens: int = 0,
+            on_text_delta: Callable[[str], None] | None = None,
         ) -> ProviderResult:
-            return await run_in_threadpool(
-                provider.generate,
-                message,
-                evidence,
-                tool_call,
-                prior_input_tokens,
-                prior_output_tokens,
-            )
+            args: tuple[object, ...] = (message, evidence, tool_call, prior_input_tokens, prior_output_tokens)
+            if isinstance(provider, OpenAIChatProvider):
+                args += (on_text_delta,)
+            return await run_in_threadpool(provider.generate, *args)
 
         state: ChatGraphState = {
             "message": request.message,
@@ -284,124 +282,189 @@ def create_app(
             "build_evidence": _build_public_evidence,
             "validate_candidate": validate_candidate,
         }
-        result = await run_chat_graph(state)
-        portfolio_search_used = result.get("portfolio_search_used", False)
-        usage = result.get("usage", {"total_tokens": 0})
-        error = result.get("error")
-        completion = result.get("completion")
-        retrieval_outcome = result.get("retrieval_outcome")
-        if retrieval_outcome is not None:
-            logger.info(
-                "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
-                request_id,
-                retrieval_outcome.classification,
-                len(retrieval_outcome.results),
-            )
-            if app.debug:
-                logger.info(
-                    "chat_debug_retrieval_outcome request_id=%s query=%r classification=%s "
-                    "result_count=%d record_ids=%s",
-                    request_id,
-                    result.get("retrieval_query", ""),
-                    retrieval_outcome.classification,
-                    len(retrieval_outcome.results),
-                    [item.record_id for item in retrieval_outcome.results],
-                )
-        if completion is not None and error is None and not result.get("refusal"):
-            logger.info(
-                "chat_provider_completed request_id=%s model=%s candidate_count=%d total_tokens=%d",
-                request_id,
-                provider_model,
-                len(completion),
-                usage["total_tokens"],
-            )
-        if result.get("refusal"):
-            events = build_event_stream(
-                request_id,
-                bundle.portfolio.content_version,
-                refusal=_refusal("unsafe"),
-                portfolio_search_used=portfolio_search_used,
-                model=provider_model,
-                usage=usage,
-            )
-        elif isinstance(error, CandidateValidationError):
-            if app.debug:
-                logger.warning(
-                    "chat_debug_provider_output_rejected request_id=%s "
-                    "validation_category=%s validation_code=%s allowed_record_ids=%s "
-                    "allowed_claim_ids=%s candidate=%s",
-                    request_id,
-                    result.get("validation_category", "candidate-contract"),
-                    error.code,
-                    sorted(result.get("record_ids", set())),
-                    sorted(result.get("claim_ids", set())),
-                    json.dumps(
-                        result.get("invalid_candidate", {}),
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                )
-            logger.warning(
-                "chat_provider_output_rejected request_id=%s code=%s",
-                request_id,
-                error.code,
-            )
-            events = build_event_stream(
-                request_id,
-                bundle.portfolio.content_version,
-                error={"code": error.code, "message": error.message, "retryable": False},
-                portfolio_search_used=portfolio_search_used,
-                model=provider_model,
-                usage=usage,
-            )
-        elif isinstance(error, ProviderFailure):
-            if app.debug and portfolio_search_used:
-                logger.warning(
-                    "chat_debug_provider_output_rejected request_id=%s "
-                    "validation_category=provider-contract validation_code=%s parser_stage=%s "
-                    "response_metadata=%s",
-                    request_id,
-                    error.code,
-                    error.diagnostic_category or "none",
-                    json.dumps(error.diagnostic_metadata, separators=(",", ":"), sort_keys=True),
-                )
-            if error.diagnostic_category is None or error.code == "invalid-provider-output":
-                logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
-            else:
-                logger.warning(
-                    "chat_provider_failed request_id=%s code=%s diagnostic_category=%s",
-                    request_id,
-                    error.code,
-                    error.diagnostic_category,
-                )
-            events = build_event_stream(
-                request_id,
-                bundle.portfolio.content_version,
-                error=_provider_error(error),
-                portfolio_search_used=portfolio_search_used,
-                model=provider_model,
-                usage=usage,
-            )
-        else:
-            events = build_event_stream(
-                request_id,
-                bundle.portfolio.content_version,
-                validated_parts=result.get("parts", []),
-                portfolio_search_used=portfolio_search_used,
-                model=provider_model,
-                usage=usage,
-            )
-        terminal_state = next(
-            (event["type"] for event in reversed(events) if event["type"] in {"error", "refusal"}),
-            "done",
+        async def response_generator() -> Iterator[bytes]:
+            loop = asyncio.get_running_loop()
+            progress: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue(maxsize=128)
+
+            def on_text_delta(delta: str) -> None:
+                if delta:
+                    asyncio.run_coroutine_threadsafe(progress.put(("text-delta", delta)), loop).result()
+
+            def on_portfolio_search() -> None:
+                progress.put_nowait(("tool", None))
+
+            state["on_text_delta"] = on_text_delta
+            state["on_portfolio_search"] = on_portfolio_search
+            graph_task = asyncio.create_task(run_chat_graph(state))
+            sequence = 1
+            tool_event_emitted = False
+            yield _sse([{"request_id": request_id, "sequence": sequence, "type": "start", "protocol_version": CHAT_PROTOCOL_VERSION, "content_version": bundle.portfolio.content_version}]).__next__()
+            try:
+                while not graph_task.done():
+                    try:
+                        event_type, delta = await asyncio.wait_for(progress.get(), timeout=0.1)
+                    except TimeoutError:
+                        continue
+                    sequence += 1
+                    payload: dict[str, object] = {"request_id": request_id, "sequence": sequence, "type": event_type}
+                    if event_type == "text-delta":
+                        payload["text"] = delta or ""
+                    else:
+                        payload["tool"] = "search_portfolio"
+                        tool_event_emitted = True
+                    yield _sse([payload]).__next__()
+    
+                while not progress.empty():
+                    sequence += 1
+                    event_type, delta = progress.get_nowait()
+                    payload = {"request_id": request_id, "sequence": sequence, "type": event_type}
+                    if event_type == "text-delta":
+                        payload["text"] = delta or ""
+                    else:
+                        payload["tool"] = "search_portfolio"
+                        tool_event_emitted = True
+                    yield _sse([payload]).__next__()
+    
+                async def finalize_events() -> list[dict[str, object]]:
+                    result = await graph_task
+                    portfolio_search_used = result.get("portfolio_search_used", False)
+                    usage = result.get("usage", {"total_tokens": 0})
+                    error = result.get("error")
+                    completion = result.get("completion")
+                    retrieval_outcome = result.get("retrieval_outcome")
+                    if retrieval_outcome is not None:
+                        logger.info(
+                            "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
+                            request_id,
+                            retrieval_outcome.classification,
+                            len(retrieval_outcome.results),
+                        )
+                        if app.debug:
+                            logger.info(
+                                "chat_debug_retrieval_outcome request_id=%s query=%r classification=%s "
+                                "result_count=%d record_ids=%s",
+                                request_id,
+                                result.get("retrieval_query", ""),
+                                retrieval_outcome.classification,
+                                len(retrieval_outcome.results),
+                                [item.record_id for item in retrieval_outcome.results],
+                            )
+                    if completion is not None and error is None and not result.get("refusal"):
+                        logger.info(
+                            "chat_provider_completed request_id=%s model=%s candidate_count=%d total_tokens=%d",
+                            request_id,
+                            provider_model,
+                            len(completion),
+                            usage["total_tokens"],
+                        )
+    
+                    if result.get("refusal"):
+                        events = build_event_stream(
+                            request_id,
+                            bundle.portfolio.content_version,
+                            refusal=_refusal("unsafe"),
+                            portfolio_search_used=portfolio_search_used,
+                            model=provider_model,
+                            usage=usage,
+                        )
+                    elif isinstance(error, CandidateValidationError):
+                        if app.debug:
+                            logger.warning(
+                                "chat_debug_provider_output_rejected request_id=%s "
+                                "validation_category=%s validation_code=%s allowed_record_ids=%s "
+                                "allowed_claim_ids=%s candidate=%s",
+                                request_id,
+                                result.get("validation_category", "candidate-contract"),
+                                error.code,
+                                sorted(result.get("record_ids", set())),
+                                sorted(result.get("claim_ids", set())),
+                                json.dumps(
+                                    result.get("invalid_candidate", {}),
+                                    ensure_ascii=False,
+                                    separators=(",", ":"),
+                                ),
+                            )
+                        logger.warning(
+                            "chat_provider_output_rejected request_id=%s code=%s",
+                            request_id,
+                            error.code,
+                        )
+                        events = build_event_stream(
+                            request_id,
+                            bundle.portfolio.content_version,
+                            error={"code": error.code, "message": error.message, "retryable": False},
+                            portfolio_search_used=portfolio_search_used,
+                            model=provider_model,
+                            usage=usage,
+                        )
+                    elif isinstance(error, ProviderFailure):
+                        if app.debug and portfolio_search_used:
+                            logger.warning(
+                                "chat_debug_provider_output_rejected request_id=%s "
+                                "validation_category=provider-contract validation_code=%s parser_stage=%s "
+                                "response_metadata=%s",
+                                request_id,
+                                error.code,
+                                error.diagnostic_category or "none",
+                                json.dumps(error.diagnostic_metadata, separators=(",", ":"), sort_keys=True),
+                            )
+                        if error.diagnostic_category is None or error.code == "invalid-provider-output":
+                            logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
+                        else:
+                            logger.warning(
+                                "chat_provider_failed request_id=%s code=%s diagnostic_category=%s",
+                                request_id,
+                                error.code,
+                                error.diagnostic_category,
+                            )
+                        events = build_event_stream(
+                            request_id,
+                            bundle.portfolio.content_version,
+                            error=_provider_error(error),
+                            portfolio_search_used=portfolio_search_used,
+                            model=provider_model,
+                            usage=usage,
+                        )
+                    else:
+                        events = build_event_stream(
+                            request_id,
+                            bundle.portfolio.content_version,
+                            validated_parts=result.get("parts", []),
+                            portfolio_search_used=portfolio_search_used,
+                            model=provider_model,
+                            usage=usage,
+                        )
+                    terminal_state = next(
+                        (event["type"] for event in reversed(events) if event["type"] in {"error", "refusal"}),
+                        "done",
+                    )
+                    logger.info(
+                        "chat_stream_completed request_id=%s terminal_state=%s event_count=%d",
+                        request_id,
+                        terminal_state,
+                        len(events),
+                    )
+                    return events
+                for event in (await finalize_events())[1:]:
+                    if event["type"] == "tool" and tool_event_emitted:
+                        continue
+                    sequence += 1
+                    event["sequence"] = sequence
+                    yield _sse([event]).__next__()
+            finally:
+                if not graph_task.done():
+                    graph_task.cancel()
+                    await asyncio.gather(graph_task, return_exceptions=True)
+
+        return StreamingResponse(
+            response_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
-        logger.info(
-            "chat_stream_completed request_id=%s terminal_state=%s event_count=%d",
-            request_id,
-            terminal_state,
-            len(events),
-        )
-        return stream_response(events)
     return app
 
 
@@ -431,3 +494,19 @@ def _default_app(*, debug: bool = False) -> FastAPI:
 
 
 app = _default_app()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

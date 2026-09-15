@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence, Iterator
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -303,6 +304,7 @@ class ChatProvider(ABC):
         tool_call: ToolCall | None = None,
         prior_input_tokens: int = 0,
         prior_output_tokens: int = 0,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> ProviderResult:
         """Return raw candidate parts and reported token usage."""
 
@@ -326,8 +328,9 @@ class FakeProvider(ChatProvider):
         tool_call: ToolCall | None = None,
         prior_input_tokens: int = 0,
         prior_output_tokens: int = 0,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> ProviderResult:
-        del message, evidence, tool_call, prior_input_tokens, prior_output_tokens
+        del message, evidence, tool_call, prior_input_tokens, prior_output_tokens, on_text_delta
         if self._failure is not None:
             raise self._failure
         return ProviderResult(self._candidates, total_tokens=0)
@@ -358,6 +361,7 @@ class OpenAIChatProvider(ChatProvider):
         tool_call: ToolCall | None = None,
         prior_input_tokens: int = 0,
         prior_output_tokens: int = 0,
+        on_text_delta: Callable[[str], None] | None = None,
     ) -> ProviderResult:
         if prior_input_tokens < 0 or prior_output_tokens < 0:
             raise ProviderFailure("invalid-provider-output", retryable=False)
@@ -437,6 +441,8 @@ class OpenAIChatProvider(ChatProvider):
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
+        if on_text_delta is not None and self._transport is _post_json:
+            return self._stream_response(body, headers, prior_input_tokens, prior_output_tokens, tool_call is not None, on_text_delta)
         try:
             status, response = self._transport(
                 self._RESPONSES_URL, body, headers, self._limits.timeout_seconds
@@ -461,6 +467,50 @@ class OpenAIChatProvider(ChatProvider):
             expect_tool_result=tool_call is not None,
         )
 
+    def _stream_response(
+        self,
+        body: bytes,
+        headers: dict[str, str],
+        prior_input_tokens: int,
+        prior_output_tokens: int,
+        expect_tool_result: bool,
+        on_text_delta: Callable[[str], None],
+    ) -> ProviderResult:
+        """Forward real Responses text deltas while retaining final schema validation."""
+        payload = json.loads(body)
+        payload["stream"] = True
+        request = Request(
+            self._RESPONSES_URL,
+            data=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        extractor = _StructuredTextDeltaExtractor(on_text_delta)
+        completed: Mapping[str, object] | None = None
+        try:
+            with urlopen(request, timeout=self._limits.timeout_seconds) as response:  # noqa: S310
+                for event in _iter_sse_payloads(response):
+                    event_type = event.get("type")
+                    if event_type == "response.output_text.delta":
+                        delta = event.get("delta")
+                        if isinstance(delta, str):
+                            extractor.feed(delta)
+                    elif event_type == "response.completed" and isinstance(event.get("response"), Mapping):
+                        completed = event["response"]
+        except TimeoutError:
+            raise ProviderFailure("provider-timeout", retryable=True, diagnostic_category="transport") from None
+        except HTTPError as error:
+            raise _http_failure(error.code) from None
+        except (OSError, URLError, json.JSONDecodeError):
+            raise ProviderFailure("provider-unavailable", retryable=True, diagnostic_category="transport") from None
+        if completed is None:
+            raise ProviderFailure("invalid-provider-output", retryable=False, diagnostic_category="stream-incomplete")
+        return self._parse_response(
+            json.dumps(completed, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+            prior_input_tokens=prior_input_tokens,
+            prior_output_tokens=prior_output_tokens,
+            expect_tool_result=expect_tool_result,
+        )
     def _ensure_projected_cost(self, input_tokens: int, output_tokens: int) -> None:
         projected = (
             input_tokens * self._limits.input_cost_per_million
@@ -609,3 +659,69 @@ def _post_json(url: str, body: bytes, headers: dict[str, str], timeout: float) -
     request = Request(url, data=body, headers=headers, method="POST")
     with urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed OpenAI endpoint
         return response.status, response.read()
+
+
+
+
+
+
+
+
+class _StructuredTextDeltaExtractor:
+    """Incrementally decode the structured response's text property."""
+
+    def __init__(self, emit: Callable[[str], None]) -> None:
+        self._emit = emit
+        self._raw = ''
+        self._emitted = ''
+
+    def feed(self, delta: str) -> None:
+        self._raw += delta
+        match = re.search(r'"text"\s*:\s*"', self._raw)
+        if match is None:
+            return
+        value = self._raw[match.end():]
+        escaped = False
+        end = len(value)
+        for index, char in enumerate(value):
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                end = index
+                break
+        encoded = value[:end]
+        if encoded.endswith('\\') or re.search(r'\\u[0-9a-fA-F]{0,3}$', encoded):
+            return
+        try:
+            decoded = json.loads(f'"{encoded}"')
+        except json.JSONDecodeError:
+            return
+        if decoded.startswith(self._emitted):
+            addition = decoded[len(self._emitted):]
+            if addition:
+                self._emit(addition)
+            self._emitted = decoded
+
+
+def _iter_sse_payloads(response: object) -> Iterator[Mapping[str, object]]:
+    """Yield JSON payloads from complete SSE data frames."""
+    frame: bytes | None = None
+    for line in response:  # type: ignore[union-attr]
+        if not isinstance(line, bytes):
+            continue
+        if line in {b'\n', b'\r\n'}:
+            if frame is not None:
+                try:
+                    payload = json.loads(frame)
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, Mapping):
+                    yield payload
+            frame = None
+        elif line.startswith(b'data: '):
+            frame = line[6:].rstrip(b'\r\n')
+
+
+
