@@ -1,4 +1,4 @@
-"""Application-layer chat pipeline — candidate validation, hydration, and event building."""
+"""Public chat event contract: text plus server-owned PDF citations."""
 
 from __future__ import annotations
 
@@ -8,402 +8,122 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
-from app.domain.content import ContentBundle, PortfolioRecord, ProjectLink
+from app.infrastructure.pdf_rag import PdfCitation
 
-CHAT_PROTOCOL_VERSION: Literal["4"] = "4"
-
-# ---------------------------------------------------------------------------
-# Exception
-# ---------------------------------------------------------------------------
+CHAT_PROTOCOL_VERSION: Literal["5"] = "5"
 
 
 class CandidateValidationError(ValueError):
-    """Raised when a provider candidate fails validation."""
-
     def __init__(self, code: str, message: str) -> None:
-        self.code = code
-        self.message = message
+        self.code, self.message = code, message
         super().__init__(message)
-
-
-# ---------------------------------------------------------------------------
-# Part models — final hydrated output sent to frontend
-# ---------------------------------------------------------------------------
 
 
 class TextPart(BaseModel):
     type: Literal["text"] = "text"
     text: str
     grounding: Literal["general", "portfolio"] = "portfolio"
-    record_ids: list[str]
-    claim_ids: list[str]
 
 
 class SourcePart(BaseModel):
     type: Literal["source"] = "source"
-    record_id: str
-    label: str
+    filename: str
+    page: int
 
 
-class ProjectCardPart(BaseModel):
-    type: Literal["project-card"] = "project-card"
-    record_id: str
-    title: str
-    summary: str
-    links: list[ProjectLink]
-
-
-# ---------------------------------------------------------------------------
-# Stable domain event models. Transport framing is handled at the API boundary.
-# ---------------------------------------------------------------------------
-
-
-class StartEvent(BaseModel):
-    request_id: str
-    sequence: int
-    type: Literal["start"] = "start"
-    protocol_version: Literal["4"] = CHAT_PROTOCOL_VERSION
-    content_version: str
-
-
-class TextDeltaEvent(BaseModel):
-    """Actual provider text progress; never carries references or cards."""
-
-    request_id: str
-    sequence: int
-    type: Literal["text-delta"] = "text-delta"
-    text: str
-
-
-class PartEvent(BaseModel):
-    request_id: str
-    sequence: int
-    type: Literal["part"] = "part"
-    part: TextPart | SourcePart | ProjectCardPart
-
-
-class ToolEvent(BaseModel):
-    """Non-sensitive notification that the portfolio search tool ran."""
-
-    request_id: str
-    sequence: int
-    type: Literal["tool"] = "tool"
-    tool: Literal["search_portfolio"] = "search_portfolio"
-
-
-class RefusalEvent(BaseModel):
-    request_id: str
-    sequence: int
-    type: Literal["refusal"] = "refusal"
-    code: str
-    message: str
-    retryable: bool
-
-
-class ErrorEvent(BaseModel):
-    request_id: str
-    sequence: int
-    type: Literal["error"] = "error"
-    code: str
-    message: str
-    retryable: bool
-
-
-class DoneEvent(BaseModel):
-    request_id: str
-    sequence: int
-    type: Literal["done"] = "done"
-    protocol_version: Literal["4"] = CHAT_PROTOCOL_VERSION
-    content_version: str
-    model: str
-    usage: dict[str, int]
-
-
-# ---------------------------------------------------------------------------
-# Validation helpers
-# ---------------------------------------------------------------------------
-
-_ALLOWED_TYPES: frozenset[str] = frozenset({"text", "source", "project-card"})
+ValidatedPart = TextPart | SourcePart
 _HTML_TAG = re.compile(r"<[a-zA-Z][^>]*>")
 
 
-def _has_html(data: Mapping[str, object]) -> bool:
-    """Return True if any string value in the candidate dict contains an HTML tag."""
-    for value in data.values():
-        if isinstance(value, str) and _HTML_TAG.search(value):
-            return True
-        if isinstance(value, list):
-            for item in value:
-                if isinstance(item, str) and _HTML_TAG.search(item):
-                    return True
-    return False
-
-
-def _build_record_lookup(
-    bundle: ContentBundle,
-) -> tuple[dict[str, PortfolioRecord], set[str]]:
-    """Build a record-id→PortfolioRecord map and a set of all known claim_ids."""
-    records_by_id: dict[str, PortfolioRecord] = {}
-    all_claim_ids: set[str] = set()
-    for record in bundle.portfolio.records:
-        records_by_id[record.id] = record
-        for claim in record.claims:
-            all_claim_ids.add(claim.claim_id)
-    return records_by_id, all_claim_ids
-
-
-# ---------------------------------------------------------------------------
-# Candidate validation
-# ---------------------------------------------------------------------------
-
-
-def validate_candidate(
-    candidate: Mapping[str, object],
-    bundle: ContentBundle,
-) -> TextPart | SourcePart | ProjectCardPart:
-    """Validate a raw provider candidate against the ContentBundle.
-
-    Returns a validated hydrated part.
-    Raises CandidateValidationError on any validation failure.
-    """
-    # Step 1: Check type is allowed
-    part_type = candidate.get("type")
-    if not isinstance(part_type, str) or part_type not in _ALLOWED_TYPES:
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-
-    # Step 2: Check for HTML tags in any string field
-    if _has_html(candidate):
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-
-    # Build lookup structures
-    records_by_id, all_claim_ids = _build_record_lookup(bundle)
-
-    if part_type == "text":
-        return _validate_text(candidate, records_by_id, all_claim_ids)
-    elif part_type == "source":
-        return _validate_source(candidate, records_by_id)
-    elif part_type == "project-card":
-        return _validate_project_card(candidate, records_by_id)
-    else:
-        # Unreachable due to the type check above, but keep mypy happy
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-
-
-def _validate_text(
-    candidate: Mapping[str, object],
-    records_by_id: dict[str, PortfolioRecord],
-    all_claim_ids: set[str],
-) -> TextPart:
-    """Validate and return a text part."""
-    text = candidate.get("text")
-    grounding = candidate.get("grounding")
-    record_ids = candidate.get("record_ids")
-    claim_ids = candidate.get("claim_ids")
-
+def validate_candidate(candidate: Mapping[str, object]) -> TextPart:
+    """Accept only a text candidate; citations are never provider-controlled."""
+    if set(candidate) != {"type", "text", "grounding"}:
+        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
+    text, grounding = candidate.get("text"), candidate.get("grounding")
     if (
-        not isinstance(text, str)
-        or grounding not in {"general", "portfolio"}
-        or not isinstance(record_ids, list)
-        or not isinstance(claim_ids, list)
+        candidate.get("type") != "text"
+        or not isinstance(text, str)
+        or not text.strip()
+        or _HTML_TAG.search(text)
     ):
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-
-    # Check referenced record_ids exist
-    for rid in record_ids:
-        if not isinstance(rid, str) or rid not in records_by_id:
-            raise CandidateValidationError(
-                code="invalid-provider-output",
-                message="No pude validar la respuesta.",
-            )
-
-    # Check referenced claim_ids exist
-    for cid in claim_ids:
-        if not isinstance(cid, str) or cid not in all_claim_ids:
-            raise CandidateValidationError(
-                code="invalid-provider-output",
-                message="No pude validar la respuesta.",
-            )
-
-    if grounding == "general" and (record_ids or claim_ids):
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-    if grounding == "portfolio" and (not record_ids or not claim_ids):
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-
-    return TextPart(
-        text=text,
-        grounding=cast(Literal["general", "portfolio"], grounding),
-        record_ids=list(record_ids),
-        claim_ids=list(claim_ids),
-    )
+        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
+    if grounding not in {"general", "portfolio"}:
+        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
+    return TextPart(text=text, grounding=cast(Literal["general", "portfolio"], grounding))
 
 
-def _validate_source(
-    candidate: Mapping[str, object],
-    records_by_id: dict[str, PortfolioRecord],
-) -> SourcePart:
-    """Validate and hydrate a source part."""
-    record_id = candidate.get("record_id")
-    if not isinstance(record_id, str) or record_id not in records_by_id:
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-    record = records_by_id[record_id]
-    # Hydrate label from the record's title
-    return SourcePart(record_id=record_id, label=record.title)
-
-
-def _validate_project_card(
-    candidate: Mapping[str, object],
-    records_by_id: dict[str, PortfolioRecord],
-) -> ProjectCardPart:
-    """Validate and hydrate a project-card part."""
-    record_id = candidate.get("record_id")
-    if not isinstance(record_id, str) or record_id not in records_by_id:
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-    record = records_by_id[record_id]
-    project = record.project
-    if project is None:
-        raise CandidateValidationError(
-            code="invalid-provider-output",
-            message="No pude validar la respuesta.",
-        )
-    # Hydrate title, summary, and links from the actual record
-    links = list(project.links) if project.links is not None else []
-    return ProjectCardPart(
-        record_id=record_id,
-        title=record.title,
-        summary=project.summary,
-        links=links,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Event stream builder
-# ---------------------------------------------------------------------------
-
-_DEFAULT_ERROR_MESSAGE = "No pude procesar la solicitud."
+def citations_to_parts(citations: list[PdfCitation]) -> list[SourcePart]:
+    seen: set[tuple[str, int]] = set()
+    parts: list[SourcePart] = []
+    for citation in citations:
+        key = (citation.filename, citation.page)
+        if key not in seen:
+            seen.add(key)
+            parts.append(SourcePart(filename=citation.filename, page=citation.page))
+    return parts
 
 
 def build_event_stream(
     request_id: str,
     content_version: str,
     *,
-    validated_parts: list[TextPart | SourcePart | ProjectCardPart] | None = None,
-    text_deltas: list[str] | None = None,
+    validated_parts: list[ValidatedPart] | None = None,
     refusal: dict[str, object] | None = None,
     error: dict[str, object] | None = None,
     portfolio_search_used: bool = False,
     model: str = "fake",
     usage: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build an ordered list of typed domain event dicts.
-
-    Order: start → [tool] → [refusal | error | parts...] → done.
-    Refusal or error take precedence over parts (mutually exclusive).
-    """
-    events: list[dict[str, object]] = []
-    sequence = 0
-
-    # Start
-    sequence += 1
-    events.append(
-        StartEvent(
-            request_id=request_id,
-            sequence=sequence,
-            content_version=content_version,
-        ).model_dump(mode="json")
-    )
-
-    for delta in text_deltas or ():
-        if not isinstance(delta, str) or not delta:
-            raise CandidateValidationError(
-                code="invalid-provider-output",
-                message="No pude validar la respuesta.",
-            )
-        sequence += 1
-        events.append(
-            TextDeltaEvent(request_id=request_id, sequence=sequence, text=delta).model_dump(
-                mode="json"
-            )
-        )
-
+    events: list[dict[str, Any]] = [
+        {
+            "request_id": request_id,
+            "sequence": 1,
+            "type": "start",
+            "protocol_version": CHAT_PROTOCOL_VERSION,
+            "content_version": content_version,
+        }
+    ]
     if portfolio_search_used:
-        sequence += 1
-        events.append(ToolEvent(request_id=request_id, sequence=sequence).model_dump(mode="json"))
-
-    if refusal is not None:
-        sequence += 1
         events.append(
-            RefusalEvent(
-                request_id=request_id,
-                sequence=sequence,
-                code=str(refusal.get("code", "")),
-                message=str(refusal.get("message", _DEFAULT_ERROR_MESSAGE)),
-                retryable=bool(refusal.get("retryable", False)),
-            ).model_dump(mode="json")
+            {
+                "request_id": request_id,
+                "sequence": len(events) + 1,
+                "type": "tool",
+                "tool": "search_portfolio",
+            }
         )
-    elif error is not None:
-        sequence += 1
+    if refusal is not None or error is not None:
+        payload = refusal if refusal is not None else error
+        assert payload is not None
         events.append(
-            ErrorEvent(
-                request_id=request_id,
-                sequence=sequence,
-                code=str(error.get("code", "")),
-                message=str(error.get("message", _DEFAULT_ERROR_MESSAGE)),
-                retryable=bool(error.get("retryable", False)),
-            ).model_dump(mode="json")
+            {
+                "request_id": request_id,
+                "sequence": len(events) + 1,
+                "type": "refusal" if refusal else "error",
+                "code": str(payload.get("code", "")),
+                "message": str(payload.get("message", "No pude procesar la solicitud.")),
+                "retryable": bool(payload.get("retryable", False)),
+            }
         )
-    elif validated_parts:
-        portfolio_text_seen = False
-        for part in validated_parts:
-            if isinstance(part, TextPart) and part.grounding == "portfolio":
-                portfolio_text_seen = True
-            if isinstance(part, (SourcePart, ProjectCardPart)) and not portfolio_text_seen:
-                raise CandidateValidationError(
-                    code="invalid-provider-output",
-                    message="No pude validar la respuesta.",
-                )
-            sequence += 1
+    else:
+        for part in validated_parts or []:
             events.append(
-                PartEvent(
-                    request_id=request_id,
-                    sequence=sequence,
-                    part=part,
-                ).model_dump(mode="json")
+                {
+                    "request_id": request_id,
+                    "sequence": len(events) + 1,
+                    "type": "part",
+                    "part": part.model_dump(mode="json"),
+                }
             )
-
-    # Done
-    sequence += 1
     events.append(
-        DoneEvent(
-            request_id=request_id,
-            sequence=sequence,
-            content_version=content_version,
-            model=model,
-            usage=usage or {"total_tokens": 0},
-        ).model_dump(mode="json")
+        {
+            "request_id": request_id,
+            "sequence": len(events) + 1,
+            "type": "done",
+            "protocol_version": CHAT_PROTOCOL_VERSION,
+            "content_version": content_version,
+            "model": model,
+            "usage": usage or {"total_tokens": 0},
+        }
     )
-
     return events

@@ -14,5 +14,7 @@ RUN poetry sync --only main --no-interaction
 
 COPY backend/app ./app
 COPY content/v1 /app/content/v1
+RUN mkdir -p /data/chroma
+VOLUME ["/data/chroma"]
 
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

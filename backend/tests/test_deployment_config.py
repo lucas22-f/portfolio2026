@@ -36,7 +36,7 @@ def test_angular_development_build_defines_only_the_local_api_base_url() -> None
     assert "define" not in configurations["build"]["configurations"]["production"]
 
 
-def test_railway_dockerfile_packages_backend_and_reviewed_content() -> None:
+def test_railway_dockerfile_packages_backend_and_persisted_pdf_index() -> None:
     railway = json.loads((REPOSITORY_ROOT / "railway.json").read_text(encoding="utf-8"))
     dockerfile = (REPOSITORY_ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
 
@@ -50,7 +50,8 @@ def test_railway_dockerfile_packages_backend_and_reviewed_content() -> None:
     assert dockerfile.index("COPY backend/README.md ./") < dockerfile.index("poetry sync")
     assert "poetry sync --only main --no-interaction" in dockerfile
     assert "COPY backend/app ./app" in dockerfile
-    assert "COPY content/v1 /app/content/v1" in dockerfile
+    assert "COPY backend/app ./app" in dockerfile
+    assert 'VOLUME ["/data/chroma"]' in dockerfile
     assert 'CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]' in dockerfile
 
 

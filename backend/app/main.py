@@ -20,11 +20,9 @@ from app.application.chat import (
     CHAT_PROTOCOL_VERSION,
     CandidateValidationError,
     build_event_stream,
-    validate_candidate,
 )
 from app.application.chat_graph import ChatGraphState, run_chat_graph
-from app.domain.content import ContentBundle, load_content_bundle
-from app.domain.retrieval import RetrievalOutcome, retrieve_evidence
+from app.domain.content import load_content_bundle
 from app.infrastructure.chat_provider import (
     ChatProvider,
     OpenAIChatProvider,
@@ -33,6 +31,7 @@ from app.infrastructure.chat_provider import (
     ProviderResult,
     ToolCall,
 )
+from app.infrastructure.pdf_rag import ChromaPdfRetriever, OpenAIEmbedder, PdfRetriever
 
 APP_VERSION = "0.1.0"
 DEFAULT_ORIGINS = ("http://localhost:4200", "https://portfolio2026.vercel.app")
@@ -106,91 +105,10 @@ def _configured_preview_origin_regex(value: str | None) -> str:
     return value if value and "*" not in value else DEFAULT_PREVIEW_ORIGIN_REGEX
 
 
-def _validate_retrieval_references(
-    candidate: Mapping[str, object],
-    retrieved_record_ids: set[str],
-    retrieved_claim_ids: set[str],
-    retrieved_claims_by_record: Mapping[str, set[str]],
-) -> Mapping[str, object]:
-    """Reject provider output that cites records or claims absent from retrieval."""
-
-    record_ids = candidate.get("record_ids")
-    if isinstance(record_ids, list) and not all(
-        isinstance(record_id, str) and record_id in retrieved_record_ids for record_id in record_ids
-    ):
-        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
-    claim_ids = candidate.get("claim_ids")
-    if isinstance(claim_ids, list) and not all(
-        isinstance(claim_id, str) and claim_id in retrieved_claim_ids for claim_id in claim_ids
-    ):
-        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
-    if (
-        isinstance(record_ids, list)
-        and isinstance(claim_ids, list)
-        and not all(
-            any(
-                isinstance(record_id, str)
-                and claim_id in retrieved_claims_by_record.get(record_id, set())
-                for record_id in record_ids
-            )
-            for claim_id in claim_ids
-        )
-    ):
-        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
-    record_id = candidate.get("record_id")
-    if record_id is not None and (
-        not isinstance(record_id, str) or record_id not in retrieved_record_ids
-    ):
-        raise CandidateValidationError("invalid-provider-output", "No pude validar la respuesta.")
-    return candidate
-
-
-def _build_public_evidence(
-    bundle: ContentBundle, outcome: RetrievalOutcome
-) -> tuple[dict[str, object], set[str], set[str], dict[str, set[str]]]:
-    """Expose only retrieved records that retain at least one exact matched claim."""
-
-    records_by_id = {record.id: record for record in bundle.portfolio.records}
-    public_records: list[dict[str, object]] = []
-    retrieved_record_ids: set[str] = set()
-    retrieved_claim_ids: set[str] = set()
-    retrieved_claims_by_record: dict[str, set[str]] = {}
-
-    for result in outcome.results:
-        record = records_by_id.get(result.record_id)
-        if record is None:
-            continue
-        claims_by_id = {claim.claim_id: claim for claim in record.claims}
-        matched_claims = [
-            claims_by_id[claim_id] for claim_id in result.matched_claims if claim_id in claims_by_id
-        ]
-        if not matched_claims:
-            continue
-        matched_claim_ids = {claim.claim_id for claim in matched_claims}
-        public_records.append(
-            {
-                "id": record.id,
-                "title": record.title,
-                "claims": [
-                    {"claim_id": claim.claim_id, "text": claim.text} for claim in matched_claims
-                ],
-            }
-        )
-        retrieved_record_ids.add(record.id)
-        retrieved_claim_ids.update(matched_claim_ids)
-        retrieved_claims_by_record[record.id] = matched_claim_ids
-
-    return (
-        {"records": public_records},
-        retrieved_record_ids,
-        retrieved_claim_ids,
-        retrieved_claims_by_record,
-    )
-
-
 def create_app(
     *,
-    bundle: ContentBundle | None = None,
+    retriever: PdfRetriever | None = None,
+    content_version: str | None = None,
     provider: ChatProvider | None = None,
     provider_model: str = "fake",
     app_version: str = APP_VERSION,
@@ -201,7 +119,12 @@ def create_app(
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
-    is_ready = ready if ready is not None else bundle is not None and provider is not None
+    is_ready = ready if ready is not None else retriever is not None and provider is not None
+    # This is the reviewed static-portfolio compatibility version consumed by the frontend.
+    # It deliberately differs from the PDF hash used only to decide whether Chroma must rebuild.
+    compatibility_version = content_version or (
+        retriever.content_version if retriever else "unavailable"
+    )
     app = FastAPI(title="Portfolio API", version=app_version, debug=debug)
     app.add_middleware(
         CORSMiddleware,
@@ -214,22 +137,22 @@ def create_app(
 
     @app.get("/health", tags=["system"])
     async def health():  # type: ignore[no-untyped-def]
-        if not is_ready or bundle is None or provider is None:
+        if not is_ready or retriever is None or provider is None:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         return {
             "status": "ok",
             "app_version": app_version,
-            "content_version": bundle.portfolio.content_version,
+            "content_version": compatibility_version,
         }
 
     @app.get("/api/v1/metadata", tags=["system"])
     @app.get("/metadata", tags=["system"], include_in_schema=False)
     async def metadata():  # type: ignore[no-untyped-def]
-        if not is_ready or bundle is None or provider is None:
+        if not is_ready or retriever is None or provider is None:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         return {
             "app_version": app_version,
-            "content_version": bundle.portfolio.content_version,
+            "content_version": compatibility_version,
             "model": provider_model,
             "protocol_version": CHAT_PROTOCOL_VERSION,
         }
@@ -255,7 +178,7 @@ def create_app(
             len(request.message),
             request.locale,
         )
-        if not is_ready or bundle is None or provider is None:
+        if not is_ready or retriever is None or provider is None:
             logger.warning("chat_request_unavailable request_id=%s", request_id)
             return JSONResponse(status_code=503, content={"status": "unavailable"})
 
@@ -288,12 +211,8 @@ def create_app(
 
         state: ChatGraphState = {
             "message": request.message,
-            "bundle": bundle,
+            "retriever": retriever,
             "invoke_model": invoke_model,
-            "retrieve_evidence": retrieve_evidence,
-            "validate_references": _validate_retrieval_references,
-            "build_evidence": _build_public_evidence,
-            "validate_candidate": validate_candidate,
         }
 
         async def response_generator() -> AsyncGenerator[bytes]:
@@ -321,7 +240,7 @@ def create_app(
                         "sequence": sequence,
                         "type": "start",
                         "protocol_version": CHAT_PROTOCOL_VERSION,
-                        "content_version": bundle.portfolio.content_version,
+                        "content_version": compatibility_version,
                     }
                 ]
             ).__next__()
@@ -361,14 +280,14 @@ def create_app(
                     usage = result.get("usage", {"total_tokens": 0})
                     error = result.get("error")
                     completion = result.get("completion")
-                    retrieval_outcome = result.get("retrieval_outcome")
-                    if retrieval_outcome is not None:
+                    retrieval_results = result.get("retrieval_results")
+                    if retrieval_results is not None:
                         logger.info(
                             "chat_tool_retrieval_completed request_id=%s "
                             "classification=%s result_count=%d",
                             request_id,
-                            retrieval_outcome.classification,
-                            len(retrieval_outcome.results),
+                            "available",
+                            len(retrieval_results),
                         )
                         if app.debug:
                             logger.info(
@@ -377,9 +296,9 @@ def create_app(
                                 "result_count=%d record_ids=%s",
                                 request_id,
                                 result.get("retrieval_query", ""),
-                                retrieval_outcome.classification,
-                                len(retrieval_outcome.results),
-                                [item.record_id for item in retrieval_outcome.results],
+                                "available",
+                                len(retrieval_results),
+                                [item.chunk.id for item in retrieval_results],
                             )
                     if completion is not None and error is None and not result.get("refusal"):
                         logger.info(
@@ -394,7 +313,7 @@ def create_app(
                     if result.get("refusal"):
                         events = build_event_stream(
                             request_id,
-                            bundle.portfolio.content_version,
+                            compatibility_version,
                             refusal=_refusal("unsafe"),
                             portfolio_search_used=portfolio_search_used,
                             model=provider_model,
@@ -404,13 +323,10 @@ def create_app(
                         if app.debug:
                             logger.warning(
                                 "chat_debug_provider_output_rejected request_id=%s "
-                                "validation_category=%s validation_code=%s allowed_record_ids=%s "
-                                "allowed_claim_ids=%s candidate=%s",
+                                "validation_category=%s validation_code=%s candidate=%s",
                                 request_id,
                                 result.get("validation_category", "candidate-contract"),
                                 error.code,
-                                sorted(result.get("record_ids", set())),
-                                sorted(result.get("claim_ids", set())),
                                 json.dumps(
                                     result.get("invalid_candidate", {}),
                                     ensure_ascii=False,
@@ -424,7 +340,7 @@ def create_app(
                         )
                         events = build_event_stream(
                             request_id,
-                            bundle.portfolio.content_version,
+                            compatibility_version,
                             error={
                                 "code": error.code,
                                 "message": error.message,
@@ -464,7 +380,7 @@ def create_app(
                             )
                         events = build_event_stream(
                             request_id,
-                            bundle.portfolio.content_version,
+                            compatibility_version,
                             error=_provider_error(error),
                             portfolio_search_used=portfolio_search_used,
                             model=provider_model,
@@ -473,7 +389,7 @@ def create_app(
                     else:
                         events = build_event_stream(
                             request_id,
-                            bundle.portfolio.content_version,
+                            compatibility_version,
                             validated_parts=result.get("parts", []),
                             portfolio_search_used=portfolio_search_used,
                             model=provider_model,
@@ -523,17 +439,28 @@ def _default_app(*, debug: bool = False) -> FastAPI:
     """Build production dependencies without making an OpenAI request at startup."""
 
     try:
+        api_key = os.environ["OPENAI_API_KEY"]
         content_root = Path(__file__).resolve().parents[2] / "content" / "v1"
-        bundle = load_content_bundle(content_root)
+        compatibility_version = load_content_bundle(content_root).portfolio.content_version
         limits = ProviderLimits(model=os.getenv("OPENAI_MODEL", "gpt-5-mini"))
-        provider = OpenAIChatProvider(
-            api_key=os.environ["OPENAI_API_KEY"],
-            limits=limits,
+        provider = OpenAIChatProvider(api_key=api_key, limits=limits)
+        retriever = ChromaPdfRetriever(
+            Path(
+                os.getenv(
+                    "PDF_RAG_PDF_PATH",
+                    str(Path(__file__).resolve().parent / "docs" / "CV_Lucas_Figueroa_1.pdf"),
+                )
+            ),
+            Path(os.getenv("PDF_RAG_PERSIST_DIRECTORY", "/data/chroma")),
+            OpenAIEmbedder(
+                api_key, model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+            ),
         )
     except (KeyError, OSError, ValueError):
         return create_app(ready=False, debug=debug)
     return create_app(
-        bundle=bundle,
+        retriever=retriever,
+        content_version=compatibility_version,
         provider=provider,
         provider_model=limits.model,
         allowed_origins=_configured_origins(os.getenv("CORS_ALLOWED_ORIGINS")),

@@ -19,10 +19,10 @@ function response(body: BodyInit): Response {
 }
 
 const start = {
-  request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '4', content_version: CONTENT_VERSION,
+  request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: CONTENT_VERSION,
 } as const;
 const done = {
-  request_id: 'r-1', sequence: 4, type: 'done', protocol_version: '4', content_version: CONTENT_VERSION,
+  request_id: 'r-1', sequence: 4, type: 'done', protocol_version: '5', content_version: CONTENT_VERSION,
   model: 'fake', usage: { total_tokens: 4 },
 } as const;
 
@@ -31,7 +31,7 @@ describe('SSE event parsing', () => {
     const events = parseSseEvents(sse([
       start,
       { request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' },
-      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'portfolio', text: 'Respuesta respaldada.', record_ids: ['p1'], claim_ids: ['c1'] } },
+      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'portfolio', text: 'Respuesta respaldada.', } },
       done,
     ]));
 
@@ -49,7 +49,7 @@ describe('ChatClient SSE streaming', () => {
     const body = sse([
       start,
       { request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' },
-      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'portfolio', text: 'Hola', record_ids: ['p1'], claim_ids: ['c1'] } },
+      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'portfolio', text: 'Hola', } },
       done,
     ]);
     const encoder = new TextEncoder();
@@ -127,7 +127,7 @@ describe('incremental text state', () => {
     });
     const validated = applyChatEvent(streaming, {
       request_id: 'r-1', sequence: 3, type: 'part',
-      part: { type: 'text', grounding: 'general', text: 'Hola', record_ids: [], claim_ids: [] },
+      part: { type: 'text', grounding: 'general', text: 'Hola', },
     });
     expect(streaming.streamedText).toBe('Hola');
     expect(validated.streamedText).toBe('');
@@ -140,7 +140,7 @@ describe('direct incremental SSE ordering', () => {
     const events = parseSseEvents(sse([
       start,
       { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Hola' },
-      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'general', text: 'Hola', record_ids: [], claim_ids: [] } },
+      { request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'general', text: 'Hola', } },
       { ...done, sequence: 4 },
     ]));
     expect(events.map((event) => event.type)).toEqual(['start', 'text-delta', 'part', 'done']);

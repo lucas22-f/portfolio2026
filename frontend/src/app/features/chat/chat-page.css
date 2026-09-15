@@ -12,6 +12,25 @@
   animation: chat-caret 1s steps(1, end) infinite;
 }
 
+.chat-activity-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: chat-activity-pulse 1.4s ease-in-out infinite;
+}
+
 @keyframes chat-caret {
   50% { opacity: 0; }
+}
+
+@keyframes chat-activity-pulse {
+  50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-stream-caret,
+  .chat-activity-dot {
+    animation: none;
+  }
 }

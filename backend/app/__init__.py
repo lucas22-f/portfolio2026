@@ -1,2 +1,1 @@
 """Portfolio backend package."""
-

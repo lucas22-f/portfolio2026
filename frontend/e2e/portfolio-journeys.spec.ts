@@ -37,7 +37,7 @@ test('keeps the guided journey keyboard-accessible without conventional navigati
   await unlockAssistant(page);
 });
 
-test('renders a mocked grounded answer with its source and project card', async ({ page }) => {
+test('renders a mocked grounded answer with a PDF page citation', async ({ page }) => {
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
     stream: sse([
@@ -45,7 +45,7 @@ test('renders a mocked grounded answer with its source and project card', async 
         type: 'start',
         request_id: 'grounded',
         sequence: 1,
-        protocol_version: '4',
+        protocol_version: '5',
         content_version: CONTENT_VERSION,
       },
       {
@@ -68,33 +68,19 @@ test('renders a mocked grounded answer with its source and project card', async 
           type: 'text',
           grounding: 'portfolio',
           text: 'Lucas implementó sistemas RAG sobre Fury.',
-          record_ids: ['project-rag-fury'],
-          claim_ids: ['project-rag-fury-claim'],
         },
       },
       {
         type: 'part',
         request_id: 'grounded',
         sequence: 5,
-        part: { type: 'source', record_id: 'project-rag-fury', label: 'CV, página 1' },
-      },
-      {
-        type: 'part',
-        request_id: 'grounded',
-        sequence: 6,
-        part: {
-          type: 'project-card',
-          record_id: 'project-rag-fury',
-          title: 'Sistemas RAG sobre Fury',
-          summary: 'Fuentes de conocimiento dinámicas y actualizadas.',
-          links: [],
-        },
+        part: { type: 'source', filename: 'CV_Lucas_Figueroa_1.pdf', page: 1 },
       },
       {
         type: 'done',
         request_id: 'grounded',
-        sequence: 7,
-        protocol_version: '4',
+        sequence: 6,
+        protocol_version: '5',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 12 },
@@ -107,13 +93,11 @@ test('renders a mocked grounded answer with its source and project card', async 
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
 
   await expect(page.getByText('Lucas implementó sistemas RAG sobre Fury.')).toBeVisible();
-  await expect(page.getByText('Fuente: CV, página 1')).toBeVisible();
-  await expect(
-    page.getByRole('log', { name: 'Respuesta del asistente' }).getByRole('heading', {
-      name: 'Sistemas RAG sobre Fury',
-    }),
-  ).toBeVisible();
-  await expect(page.getByText('Modelo: mock-model')).toBeVisible();
+  await expect(page.getByTestId('assistant-activity')).toContainText(
+    'Respuesta completada con información del portfolio',
+  );
+  await expect(page.getByTestId('chat-sources')).toContainText('Fuentes consultadas');
+  await expect(page.getByTestId('chat-sources')).toContainText('CV_Lucas_Figueroa_1.pdf, página 1');
 });
 
 test('shows safe Spanish refusals and invalid stream failures without rendering disallowed parts', async ({
@@ -126,7 +110,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'start',
         request_id: 'refusal',
         sequence: 1,
-        protocol_version: '4',
+        protocol_version: '5',
         content_version: CONTENT_VERSION,
       },
       {
@@ -141,7 +125,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'done',
         request_id: 'refusal',
         sequence: 3,
-        protocol_version: '4',
+        protocol_version: '5',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 0 },
@@ -160,7 +144,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'start',
         request_id: 'invalid',
         sequence: 1,
-        protocol_version: '4',
+        protocol_version: '5',
         content_version: CONTENT_VERSION,
       },
       {

@@ -27,3 +27,9 @@ The production entry point is:
 poetry run uvicorn app.main:app --host 0.0.0.0 --port $env:PORT
 ```
 
+## Chat compatibility and PDF index
+
+The chat indexes `app/docs/CV_Lucas_Figueroa_1.pdf` into persisted Chroma storage. Its PDF SHA-256 is an internal index lifecycle value: a changed PDF rebuilds the collection.
+
+`content_version` in `/api/v1/metadata` and SSE events remains the reviewed `content/v1` portfolio version. The Angular static portfolio validates that value before enabling chat, so a PDF reindex does not falsely disable an otherwise compatible static UI.
+

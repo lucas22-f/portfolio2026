@@ -3,19 +3,12 @@ import { Injectable } from '@angular/core';
 import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
 import { API_BASE_URL } from '../../core/config/api-base-url';
 
-export const CHAT_PROTOCOL_VERSION = '4';
+export const CHAT_PROTOCOL_VERSION = '5';
 export type TextPart = {
-  type: 'text'; text: string; grounding: 'general' | 'portfolio'; record_ids: string[]; claim_ids: string[];
+  type: 'text'; text: string; grounding: 'general' | 'portfolio';
 };
-export type SourcePart = { type: 'source'; record_id: string; label: string };
-export type ProjectCardPart = {
-  type: 'project-card';
-  record_id: string;
-  title: string;
-  summary: string;
-  links: Array<{ label: string; url: string }>;
-};
-export type ChatPart = TextPart | SourcePart | ProjectCardPart;
+export type SourcePart = { type: 'source'; filename: string; page: number };
+export type ChatPart = TextPart | SourcePart;
 
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
@@ -143,10 +136,7 @@ export function parseSseEvents(sse: string): ChatEvent[] {
         if (!portfolioSearchSeen) throw invalid();
         portfolioGroundingSeen = true;
       }
-      if (
-        (event.part.type === 'source' || event.part.type === 'project-card') &&
-        !portfolioGroundingSeen
-      )
+      if (event.part.type === 'source' && !portfolioGroundingSeen)
         throw invalid();
     }
     terminalOutcomeSeen = event.type === 'refusal' || event.type === 'error';
@@ -173,9 +163,6 @@ function invalid(): never {
 function text(value: unknown): string {
   return typeof value === 'string' && value.trim() && !HTML_TAG.test(value) ? value : invalid();
 }
-function ids(value: unknown): string[] {
-  return Array.isArray(value) && value.every((id) => typeof id === 'string') ? value : invalid();
-}
 function eventBase(value: Record<string, unknown>): EventBase {
   return typeof value['request_id'] === 'string' &&
     Number.isInteger(value['sequence']) &&
@@ -192,35 +179,16 @@ function validatePart(value: unknown): ChatPart {
       part['grounding'] === 'general' || part['grounding'] === 'portfolio'
         ? part['grounding']
         : invalid();
-    const recordIds = ids(part['record_ids']);
-    const claimIds = ids(part['claim_ids']);
-    if (grounding === 'general' && (recordIds.length || claimIds.length)) return invalid();
     return {
       type: 'text',
       text: text(part['text']),
       grounding,
-      record_ids: recordIds,
-      claim_ids: claimIds,
     };
   }
   if (part['type'] === 'source')
-    return { type: 'source', record_id: text(part['record_id']), label: text(part['label']) };
-  if (part['type'] === 'project-card') {
-    if (!Array.isArray(part['links'])) return invalid();
-    return {
-      type: 'project-card',
-      record_id: text(part['record_id']),
-      title: text(part['title']),
-      summary: text(part['summary']),
-      links: part['links'].map((link) => {
-        if (!link || typeof link !== 'object') return invalid();
-        const item = link as Record<string, unknown>;
-        const url = text(item['url']);
-        if (!/^https:\/\//.test(url)) return invalid();
-        return { label: text(item['label']), url };
-      }),
-    };
-  }
+    return typeof part['page'] === 'number' && Number.isInteger(part['page']) && part['page'] > 0
+      ? { type: 'source', filename: text(part['filename']), page: part['page'] }
+      : invalid();
   return invalid();
 }
 
@@ -336,10 +304,7 @@ export class ChatClient {
           if (!portfolioSearchSeen) return invalid();
           portfolioGroundingSeen = true;
         }
-        if (
-          (event.part.type === 'source' || event.part.type === 'project-card') &&
-          !portfolioGroundingSeen
-        )
+        if (event.part.type === 'source' && !portfolioGroundingSeen)
           return invalid();
       }
       if (

@@ -20,14 +20,8 @@ _CHAT_INSTRUCTIONS = (
 )
 _GROUNDED_SPANISH_INSTRUCTIONS = (
     "Respondé en español. Usá únicamente la evidencia provista en la entrada; "
-    "no inventes datos ni referencias. Devolvé solamente partes candidatas que "
-    "cumplan el esquema solicitado. Para cada parte con grounding igual a "
-    "portfolio, copiá record_ids y claim_ids exactamente desde records[].id y "
-    "records[].claims[].claim_id de la evidencia: cada claim_id debe pertenecer "
-    "al record_id citado en la misma parte. No cites IDs que no estén presentes "
-    "ni combines claims de un record con otro. Si no podés responder una parte "
-    "con una pareja record_id/claim_id exacta, no la presentes como portfolio: "
-    "usá grounding general con record_ids y claim_ids vacíos."
+    "no inventes datos ni referencias. Devolvé solamente partes de texto que "
+    "cumplan el esquema solicitado. Las citas de archivo y página las agrega el servidor."
 )
 
 _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
@@ -46,28 +40,8 @@ _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
                                 "type": "string",
                                 "enum": ["general", "portfolio"],
                             },
-                            "record_ids": {"type": "array", "items": {"type": "string"}},
-                            "claim_ids": {"type": "array", "items": {"type": "string"}},
                         },
-                        "required": ["type", "text", "grounding", "record_ids", "claim_ids"],
-                        "additionalProperties": False,
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "const": "source"},
-                            "record_id": {"type": "string"},
-                        },
-                        "required": ["type", "record_id"],
-                        "additionalProperties": False,
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "const": "project-card"},
-                            "record_id": {"type": "string"},
-                        },
-                        "required": ["type", "record_id"],
+                        "required": ["type", "text", "grounding"],
                         "additionalProperties": False,
                     },
                 ]

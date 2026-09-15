@@ -26,7 +26,7 @@ describe('ChatPage', () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '4', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
         onEvent({
           request_id: 'r-1',
           sequence: 2,
@@ -35,11 +35,9 @@ describe('ChatPage', () => {
             type: 'text',
             grounding: 'portfolio',
             text: 'Respuesta respaldada.',
-            record_ids: ['p1'],
-            claim_ids: ['c1'],
           },
         });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '4', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
       },
     };
     await TestBed.configureTestingModule({
@@ -62,13 +60,15 @@ describe('ChatPage', () => {
     expect(page.querySelector('label[for="chat-message"]')?.textContent).toContain('Tu consulta');
   });
 
-  it('renders a portfolio lookup notice when the search tool was invoked', async () => {
+  it('renders safe activity and groups server-owned citations with a grounded answer', async () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '4', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
         onEvent({ request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '4', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'portfolio', text: 'Respuesta respaldada.' } });
+        onEvent({ request_id: 'r-1', sequence: 4, type: 'part', part: { type: 'source', filename: 'CV.pdf', page: 3 } });
+        onEvent({ request_id: 'r-1', sequence: 5, type: 'done', protocol_version: '5', content_version: 'v1' });
       },
     };
     await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
@@ -78,8 +78,34 @@ describe('ChatPage', () => {
     await fixture.componentInstance.submit();
     fixture.detectChanges();
 
-    expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="portfolio-search-notice"]')?.textContent)
-      .toContain('Información consultada en el portfolio');
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('[data-testid="assistant-activity"]')?.textContent)
+      .toContain('Respuesta completada con información del portfolio');
+    expect(page.querySelector('[data-testid="chat-sources"]')?.textContent)
+      .toContain('Fuentes consultadas');
+    expect(page.querySelector('[data-testid="chat-sources"]')?.textContent)
+      .toContain('CV.pdf, página 3');
+    expect(page.textContent).not.toContain('Fuente:');
+  });
+
+  it('derives only safe lifecycle labels from validated chat state', async () => {
+    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    const state = (overrides: Partial<ReturnType<typeof fixture.componentInstance.state>>) => fixture.componentInstance.state.set({
+      status: 'streaming', parts: [], announcement: '', retryable: false, portfolioSearchUsed: false, streamedText: '', ...overrides,
+    });
+
+    state({});
+    expect(fixture.componentInstance.activityLabel()).toBe('Preparando respuesta');
+    state({ portfolioSearchUsed: true });
+    expect(fixture.componentInstance.activityLabel()).toBe('Consultando información del portfolio');
+    state({ portfolioSearchUsed: false, streamedText: 'Parcial' });
+    expect(fixture.componentInstance.activityLabel()).toBe('Generando respuesta');
+    state({ status: 'complete', portfolioSearchUsed: true, streamedText: '' });
+    expect(fixture.componentInstance.activityLabel()).toBe(
+      'Respuesta completada con información del portfolio',
+    );
   });
 
   it('keeps invalid provider output on the safe non-retryable validation path', async () => {

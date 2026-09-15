@@ -18,6 +18,7 @@ import {
   ChatClient,
   ChatState,
   ChatStreamError,
+  SourcePart,
   createChatState,
   applyChatEvent,
 } from './chat-client';
@@ -45,11 +46,11 @@ import {
                 @if (state().retryable) { <button hlmBtn class="mt-3 min-h-11" type="button" (click)="retry()">Reintentar</button> }
               </section>
             }
-            @if (state().portfolioSearchUsed) {
-              <p data-testid="portfolio-search-notice" class="border-l-4 border-primary bg-card p-3 text-sm text-[var(--color-text)]" role="status">Información consultada en el portfolio.</p>
-            }
-            @if (state().status === 'streaming') {
-              <p class="m-0 w-fit rounded-full bg-[var(--color-accent-subtle)] px-3 py-1 text-sm text-[var(--color-heading)]" role="status">El asistente está respondiendo…</p>
+            @if (activityLabel()) {
+              <aside data-testid="assistant-activity" class="flex w-fit items-center gap-2 rounded-full bg-[var(--color-accent-subtle)] px-3 py-1.5 text-sm text-[var(--color-heading)]" role="status">
+                @if (state().status === 'streaming') { <span class="chat-activity-dot" aria-hidden="true"></span> }
+                <span>{{ activityLabel() }}</span>
+              </aside>
             }
             @if (!state().parts.length && state().status === 'idle' && compatible() !== false) {
               <p class="m-0 max-w-xl text-lg leading-relaxed text-muted-foreground">Escribí una consulta para iniciar la conversación.</p>
@@ -66,21 +67,20 @@ import {
                   <article class="grid gap-2 rounded-lg border border-border bg-card p-4 sm:p-5" [attr.aria-label]="part.grounding === 'general' ? 'Respuesta general' : 'Respuesta basada en el portfolio'">
                     <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">{{ part.grounding === 'general' ? 'Respuesta general' : 'Basada en el portfolio' }}</p>
                     <p class="m-0 leading-relaxed">{{ part.text }}</p>
+                    @if (part.grounding === 'portfolio' && sourcesFollowing($index).length) {
+                      <section data-testid="chat-sources" class="mt-1 border-t border-border pt-3" [attr.aria-labelledby]="'chat-sources-heading-' + $index">
+                        <h4 [id]="'chat-sources-heading-' + $index" class="m-0 text-sm font-semibold text-[var(--color-heading)]">Fuentes consultadas</h4>
+                        <ul class="mt-2 grid gap-1 pl-5 text-sm text-muted-foreground">
+                          @for (source of sourcesFollowing($index); track source.filename + source.page) {
+                            <li>{{ source.filename }}, página {{ source.page }}</li>
+                          }
+                        </ul>
+                      </section>
+                    }
                   </article>
                 }
-                @case ('source') { <p class="m-0 text-sm text-muted-foreground">Fuente: {{ part.label }}</p> }
-                @case ('project-card') {
-                  <article class="border-t-4 border-primary bg-card p-5">
-                    <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">Proyecto</p>
-                    <h4 class="mt-2 font-[var(--font-display)] text-2xl text-[var(--color-heading)]">{{ part.title }}</h4>
-                    <p class="leading-relaxed text-[var(--color-text)]">{{ part.summary }}</p>
-                    @for (link of part.links; track link.url) { <a class="mr-4 inline-flex min-h-11 items-center text-primary underline underline-offset-4 hover:text-primary/80" [href]="link.url" rel="noreferrer">{{ link.label }}</a> }
-                  </article>
-                }
+                @case ('source') {}
               }
-            }
-            @if (state().model || state().usage) {
-              <p class="m-0 text-xs text-muted-foreground" aria-live="polite">Modelo: {{ state().model }} @if (state().usage?.total_tokens !== undefined) { · Uso: {{ state().usage?.total_tokens }} tokens }</p>
             }
           </div>
         </div>
@@ -108,6 +108,30 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   message = '';
   private lastMessage = '';
   private activeRequest?: AbortController;
+
+  activityLabel(): string | undefined {
+    const current = this.state();
+    if (current.status === 'streaming') {
+      if (current.portfolioSearchUsed) return 'Consultando información del portfolio';
+      if (current.streamedText || current.parts.length) return 'Generando respuesta';
+      return 'Preparando respuesta';
+    }
+    if (current.status === 'complete') {
+      return current.portfolioSearchUsed
+        ? 'Respuesta completada con información del portfolio'
+        : 'Respuesta completada';
+    }
+    return undefined;
+  }
+
+  sourcesFollowing(index: number): SourcePart[] {
+    const sources: SourcePart[] = [];
+    for (const part of this.state().parts.slice(index + 1)) {
+      if (part.type === 'text') break;
+      if (part.type === 'source') sources.push(part);
+    }
+    return sources;
+  }
 
   ngAfterViewInit(): void {
     if (this.focusOnEntry) this.focusEntry();
