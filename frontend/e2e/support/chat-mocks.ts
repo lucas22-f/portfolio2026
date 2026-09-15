@@ -6,8 +6,8 @@ type ChatMock = {
   stream?: string;
 };
 
-export function ndjson(events: unknown[]): string {
-  return `${events.map((event) => JSON.stringify(event)).join('\n')}\n`;
+export function sse(events: Array<{ type: string }>): string {
+  return events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
 }
 
 export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
@@ -16,7 +16,7 @@ export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
       contentType: 'application/json',
       body: JSON.stringify({
         content_version: mock.metadataVersion,
-        protocol_version: mock.metadataProtocolVersion ?? '2',
+        protocol_version: mock.metadataProtocolVersion ?? '3',
       }),
     });
   });
@@ -25,6 +25,6 @@ export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
       await route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
       return;
     }
-    await route.fulfill({ contentType: 'application/x-ndjson', body: mock.stream });
+    await route.fulfill({ contentType: 'text/event-stream', body: mock.stream });
   });
 }

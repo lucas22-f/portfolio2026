@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
 import { API_BASE_URL } from '../../core/config/api-base-url';
 
-export const CHAT_PROTOCOL_VERSION = '2';
+export const CHAT_PROTOCOL_VERSION = '3';
 export type TextPart = {
   type: 'text'; text: string; grounding: 'general' | 'portfolio'; record_ids: string[]; claim_ids: string[];
 };
@@ -108,12 +108,8 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   }
 }
 
-export function parseNdjsonEvents(ndjson: string): ChatEvent[] {
-  const lines = ndjson
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const events = lines.map((line) => parseNdjsonEvent(line));
+export function parseSseEvents(sse: string): ChatEvent[] {
+  const events = sse.split(/\r?\n\r?\n/).filter(Boolean).map(parseSseEvent);
   let sequence = 1;
   let requestId: string | undefined;
   for (const event of events) {
@@ -149,9 +145,14 @@ export function parseNdjsonEvents(ndjson: string): ChatEvent[] {
   return events;
 }
 
-export function parseNdjsonEvent(line: string): ChatEvent {
+export function parseSseEvent(frame: string): ChatEvent {
   try {
-    return validateEvent(JSON.parse(line));
+    const fields = frame.split(/\r?\n/);
+    const event = fields.find((field) => field.startsWith('event: '))?.slice(7);
+    const data = fields.find((field) => field.startsWith('data: '))?.slice(6);
+    if (!event || !data || fields.length !== 2) return invalid();
+    const parsed = validateEvent(JSON.parse(data));
+    return parsed.type === event ? parsed : invalid();
   } catch {
     return invalid();
   }
@@ -281,10 +282,6 @@ export class ChatClient {
     signal?: AbortSignal,
   ): Promise<void> {
     const clientRequestId = crypto.randomUUID();
-    console.info('[chat] request sending', {
-      requestId: clientRequestId,
-      request: { message, locale: 'es', client_request_id: clientRequestId },
-    });
     let response: Response;
     try {
       response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
@@ -294,22 +291,9 @@ export class ChatClient {
         signal,
       });
     } catch {
-      console.error('[chat] request failed', {
-        requestId: clientRequestId,
-        code: 'provider-unavailable',
-      });
       throw new Error('provider-unavailable');
     }
-    console.info('[chat] response received', {
-      requestId: clientRequestId,
-      status: response.status,
-      hasBody: Boolean(response.body),
-    });
-    if (!response.ok || !response.body) {
-      console.error('[chat] request failed', {
-        requestId: clientRequestId,
-        code: 'provider-unavailable',
-      });
+    if (!response.ok || !response.body || !response.headers.get('content-type')?.startsWith('text/event-stream')) {
       throw new Error('provider-unavailable');
     }
     const reader = response.body.getReader();
@@ -355,49 +339,30 @@ export class ChatClient {
       expectedSequence += 1;
       terminalOutcomeSeen ||= event.type === 'error' || event.type === 'refusal';
       doneSeen ||= event.type === 'done';
-      console.info('[chat] event received', {
-        event,
-      });
       onEvent(event);
     };
-    const parseAndEmit = (line: string): void => {
-      try {
-        emit(parseNdjsonEvent(line));
-      } catch (error) {
-        console.error('[chat] stream failed', {
-          requestId: requestId ?? clientRequestId,
-          code: error instanceof ChatStreamError ? error.code : INVALID_OUTPUT,
-        });
-        throw error;
-      }
-    };
+    const parseAndEmit = (frame: string): void => emit(parseSseEvent(frame));
     for (;;) {
       let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
         chunk = await reader.read();
       } catch {
-        console.error('[chat] stream failed', {
-          requestId: requestId ?? clientRequestId,
-          code: 'provider-unavailable',
-        });
         throw new Error('provider-unavailable');
       }
       if (chunk.done) break;
       pending += decoder.decode(chunk.value, { stream: true });
-      const index = pending.lastIndexOf('\n');
+      const boundary = /\r?\n\r?\n/g;
+      let match: RegExpExecArray | null;
+      let lastBoundary: RegExpExecArray | undefined;
+      while ((match = boundary.exec(pending)) !== null) lastBoundary = match;
+      const index = lastBoundary?.index ?? -1;
       if (index < 0) continue;
       const complete = pending.slice(0, index);
-      pending = pending.slice(index + 1);
-      complete.split('\n').filter(Boolean).forEach(parseAndEmit);
+      pending = pending.slice(index + lastBoundary![0].length);
+      complete.split(/\r?\n\r?\n/).filter(Boolean).forEach(parseAndEmit);
     }
-    if (pending.trim()) {
-      parseAndEmit(pending);
-    }
+    if (pending.trim()) throw invalid();
     if (!doneSeen) {
-      console.error('[chat] stream failed', {
-        requestId: requestId ?? clientRequestId,
-        code: STREAM_CLOSED,
-      });
       throw new ChatStreamError(STREAM_CLOSED, true);
     }
   }

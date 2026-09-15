@@ -70,7 +70,7 @@ Invoke-WebRequest http://127.0.0.1:8000/api/v1/chat/stream -Method Post -Content
   Select-Object -ExpandProperty Content
 ```
 
-Expect health `200`, matching `content_version` values from health and metadata, and ordered NDJSON that starts with `start` and ends with `done` (or emits one typed refusal/error). Stop the fake server with `Ctrl+C`; on Windows use `Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }` if necessary.
+Expect health `200`, matching `content_version` values from health and metadata, and ordered SSE that uses `event: start` and uses `event: done` (or emits one typed refusal/error). Stop the fake server with `Ctrl+C`; on Windows use `Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }` if necessary.
 
 ## Deployment configuration
 
@@ -101,7 +101,7 @@ Copy `frontend/.env.example` and `backend/.env.example` only as local references
 
 1. Deploy static frontend routes first and confirm navigation works.
 2. Check Railway `/health` and `/metadata`; both must agree on `content_version` before enabling chat traffic.
-3. Send one supported and one unsupported Spanish request to `/api/v1/chat/stream`; confirm ordered NDJSON and a safe typed refusal.
+3. Send one supported and one unsupported Spanish request to `/api/v1/chat/stream`; confirm ordered SSE and a safe typed refusal.
 4. Confirm a Vercel preview origin is accepted while an unrelated `*.vercel.app` origin is rejected.
 5. If compatibility fails, the frontend disables chat while preserving static routes. Roll back the frontend and Railway deployments independently; no data migration is required.
 

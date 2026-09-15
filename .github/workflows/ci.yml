@@ -39,13 +39,16 @@ jobs:
           key: poetry-${{ hashFiles('backend/poetry.lock') }}-${{ runner.os }}
           restore-keys: poetry-${{ runner.os }}
 
-      - name: Install dependencies
-        run: poetry install --no-interaction
+      - name: Check lockfile consistency
+        run: poetry check --lock
+
+      - name: Install locked dependencies
+        run: poetry sync --no-interaction
         env:
           POETRY_VIRTUALENVS_IN_PROJECT: true
 
-      - name: Check lockfile consistency
-        run: poetry check --lock
+      - name: Verify application imports
+        run: poetry run python -c "from app.application.chat_graph import run_chat_graph; from app.main import app"
 
       - name: Lint with Ruff
         run: poetry run ruff check app tests --output-format=concise

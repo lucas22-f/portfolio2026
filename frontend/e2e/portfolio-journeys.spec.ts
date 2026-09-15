@@ -1,6 +1,6 @@
 import { expect, Page, test } from '@playwright/test';
 
-import { mockChatApi, ndjson } from './support/chat-mocks';
+import { mockChatApi, sse } from './support/chat-mocks';
 
 const CONTENT_VERSION = '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c';
 
@@ -40,12 +40,12 @@ test('keeps the guided journey keyboard-accessible without conventional navigati
 test('renders a mocked grounded answer with its source and project card', async ({ page }) => {
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
-    stream: ndjson([
+    stream: sse([
       {
         type: 'start',
         request_id: 'grounded',
         sequence: 1,
-        protocol_version: '2',
+        protocol_version: '3',
         content_version: CONTENT_VERSION,
       },
       {
@@ -88,7 +88,7 @@ test('renders a mocked grounded answer with its source and project card', async 
         type: 'done',
         request_id: 'grounded',
         sequence: 6,
-        protocol_version: '2',
+        protocol_version: '3',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 12 },
@@ -115,12 +115,12 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
 }) => {
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
-    stream: ndjson([
+    stream: sse([
       {
         type: 'start',
         request_id: 'refusal',
         sequence: 1,
-        protocol_version: '2',
+        protocol_version: '3',
         content_version: CONTENT_VERSION,
       },
       {
@@ -135,7 +135,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'done',
         request_id: 'refusal',
         sequence: 3,
-        protocol_version: '2',
+        protocol_version: '3',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 0 },
@@ -149,12 +149,12 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
 
   await mockChatApi(page, {
     metadataVersion: CONTENT_VERSION,
-    stream: ndjson([
+    stream: sse([
       {
         type: 'start',
         request_id: 'invalid',
         sequence: 1,
-        protocol_version: '2',
+        protocol_version: '3',
         content_version: CONTENT_VERSION,
       },
       {
