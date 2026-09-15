@@ -47,8 +47,8 @@ def test_railway_dockerfile_packages_backend_and_reviewed_content() -> None:
     assert railway["deploy"]["healthcheckPath"] == "/health"
     assert "COPY backend/pyproject.toml backend/poetry.lock ./" in dockerfile
     assert "COPY backend/README.md ./" in dockerfile
-    assert dockerfile.index("COPY backend/README.md ./") < dockerfile.index("poetry install")
-    assert "poetry install --only main --sync --no-interaction" in dockerfile
+    assert dockerfile.index("COPY backend/README.md ./") < dockerfile.index("poetry sync")
+    assert "poetry sync --only main --no-interaction" in dockerfile
     assert "COPY backend/app ./app" in dockerfile
     assert "COPY content/v1 /app/content/v1" in dockerfile
     assert 'CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]' in dockerfile

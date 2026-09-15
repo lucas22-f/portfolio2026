@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
+from app.application.chat_graph import ChatGraphState, run_chat_graph
 from app.application.chat import (
     CHAT_PROTOCOL_VERSION,
     CandidateValidationError,
@@ -58,10 +59,14 @@ class ChatRequest(BaseModel):
     )
 
 
-def _ndjson(events: list[dict[str, object]]) -> Iterator[bytes]:
-    for event in events:
-        yield (json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
-
+def _sse(events: list[dict[str, object]]) -> Iterator[bytes]:
+    """Frame trusted domain events as SSE without exposing partial model text."""
+    for payload in events:
+        event_type = payload["type"]
+        if not isinstance(event_type, str):
+            raise TypeError("chat event type must be a string")
+        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        yield f"event: {event_type}\ndata: {data}\n\n".encode("utf-8")
 
 def _provider_error(error: ProviderFailure) -> dict[str, object]:
     code = error.code if error.code in _PROVIDER_MESSAGES else "provider-unavailable"
@@ -230,22 +235,17 @@ def create_app(
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(request: ChatRequest):  # type: ignore[no-untyped-def]
         request_id = request.client_request_id
-        if app.debug:
-            logger.info(
-                "chat_debug_request_received request_id=%s message=%r locale=%s",
-                request_id,
-                request.message,
-                request.locale,
-            )
 
         def stream_response(events: list[dict[str, object]]) -> StreamingResponse:
-            if app.debug:
-                logger.info(
-                    "chat_debug_response_payload request_id=%s payload=%s",
-                    request_id,
-                    json.dumps(events, ensure_ascii=False, separators=(",", ":")),
-                )
-            return StreamingResponse(_ndjson(events), media_type="application/x-ndjson")
+            return StreamingResponse(
+                _sse(events),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache, no-transform",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
         logger.info(
             "chat_request_started request_id=%s message_length=%d locale=%s",
@@ -256,196 +256,79 @@ def create_app(
         if not is_ready or bundle is None or provider is None:
             logger.warning("chat_request_unavailable request_id=%s", request_id)
             return JSONResponse(status_code=503, content={"status": "unavailable"})
-        safety_outcome = retrieve_evidence(request.message, bundle)
-        if safety_outcome.classification == "unsafe":
-            events = build_event_stream(
-                request_id,
-                bundle.portfolio.content_version,
-                refusal=_refusal("unsafe"),
-                model=provider_model,
-            )
-            logger.info(
-                "chat_stream_completed request_id=%s terminal_state=refusal event_count=%d",
-                request_id,
-                len(events),
-            )
-            return stream_response(events)
 
-        try:
-            portfolio_search_used = False
-            completion = await run_in_threadpool(
-                provider.generate,
-                request.message,
+        async def invoke_model(*args: object):  # type: ignore[no-untyped-def]
+            return await run_in_threadpool(provider.generate, *args)
+
+        state: ChatGraphState = {
+            "message": request.message,
+            "bundle": bundle,
+            "invoke_model": invoke_model,
+            "retrieve_evidence": retrieve_evidence,
+            "validate_references": _validate_retrieval_references,
+            "build_evidence": _build_public_evidence,
+            "validate_candidate": validate_candidate,
+        }
+        result = await run_chat_graph(state)
+        portfolio_search_used = result.get("portfolio_search_used", False)
+        usage = result.get("usage", {"total_tokens": 0})
+        error = result.get("error")
+        completion = result.get("completion")
+        retrieval_outcome = result.get("retrieval_outcome")
+        if retrieval_outcome is not None:
+            logger.info(
+                "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
+                request_id,
+                retrieval_outcome.classification,
+                len(retrieval_outcome.results),
             )
-            retrieved_record_ids: set[str] = set()
-            retrieved_claim_ids: set[str] = set()
-            retrieved_claims_by_record: dict[str, set[str]] = {}
-            if completion.tool_call is not None:
-                if app.debug:
-                    logger.info(
-                        "chat_debug_route_selected request_id=%s route=portfolio_rag "
-                        "tool=search_portfolio query=%r call_id=%s",
-                        request_id,
-                        completion.tool_call.query,
-                        completion.tool_call.call_id,
-                    )
-                outcome = retrieve_evidence(completion.tool_call.query, bundle)
-                portfolio_search_used = True
+            if app.debug:
                 logger.info(
-                    "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
+                    "chat_debug_retrieval_outcome request_id=%s query=%r classification=%s "
+                    "result_count=%d record_ids=%s",
                     request_id,
-                    outcome.classification,
-                    len(outcome.results),
+                    result.get("retrieval_query", ""),
+                    retrieval_outcome.classification,
+                    len(retrieval_outcome.results),
+                    [item.record_id for item in retrieval_outcome.results],
                 )
-                if app.debug:
-                    logger.info(
-                        "chat_debug_retrieval_outcome request_id=%s query=%r "
-                        "classification=%s result_count=%d record_ids=%s",
-                        request_id,
-                        completion.tool_call.query,
-                        outcome.classification,
-                        len(outcome.results),
-                        [result.record_id for result in outcome.results],
-                    )
-                if outcome.classification == "unsafe":
-                    events = build_event_stream(
-                        request_id,
-                        bundle.portfolio.content_version,
-                        refusal=_refusal("unsafe"),
-                        portfolio_search_used=portfolio_search_used,
-                        model=provider_model,
-                        usage={"total_tokens": completion.total_tokens},
-                    )
-                    logger.info(
-                        "chat_stream_completed request_id=%s terminal_state=refusal event_count=%d",
-                        request_id,
-                        len(events),
-                    )
-                    return stream_response(events)
-                (
-                    public_evidence,
-                    retrieved_record_ids,
-                    retrieved_claim_ids,
-                    retrieved_claims_by_record,
-                ) = _build_public_evidence(bundle, outcome)
-                if not public_evidence["records"]:
-                    parts = [
-                        validate_candidate(
-                            {
-                                "type": "text",
-                                "text": _NO_PORTFOLIO_RESULTS_MESSAGE,
-                                "grounding": "general",
-                                "record_ids": [],
-                                "claim_ids": [],
-                            },
-                            bundle,
-                        )
-                    ]
-                    events = build_event_stream(
-                        request_id,
-                        bundle.portfolio.content_version,
-                        validated_parts=parts,
-                        portfolio_search_used=portfolio_search_used,
-                        model=provider_model,
-                        usage={"total_tokens": completion.total_tokens},
-                    )
-                    logger.info(
-                        "chat_stream_completed request_id=%s terminal_state=done event_count=%d",
-                        request_id,
-                        len(events),
-                    )
-                    return stream_response(events)
-                completion = await run_in_threadpool(
-                    provider.generate,
-                    request.message,
-                    public_evidence,
-                    completion.tool_call,
-                    completion.total_input_tokens,
-                    completion.total_output_tokens,
-                )
-                if completion.tool_call is not None:
-                    raise ProviderFailure("invalid-provider-output", retryable=False)
-            elif app.debug:
-                logger.info(
-                    "chat_debug_route_selected request_id=%s route=general_no_tool",
-                    request_id,
-                )
-            candidates = list(completion)
-            usage = {"total_tokens": getattr(completion, "total_tokens", 0)}
-            if app.debug and retrieved_record_ids:
-                logger.info(
-                    "chat_debug_rag_response_received request_id=%s "
-                    "candidate_count=%d total_tokens=%d",
-                    request_id,
-                    len(candidates),
-                    usage["total_tokens"],
-                )
+        if completion is not None and error is None and not result.get("refusal"):
             logger.info(
                 "chat_provider_completed request_id=%s model=%s candidate_count=%d total_tokens=%d",
                 request_id,
                 provider_model,
-                len(candidates),
+                len(completion),
                 usage["total_tokens"],
             )
-            parts = []
-            for candidate in candidates:
-                try:
-                    validated_candidate = _validate_retrieval_references(
-                        candidate,
-                        retrieved_record_ids,
-                        retrieved_claim_ids,
-                        retrieved_claims_by_record,
-                    )
-                except CandidateValidationError as error:
-                    if app.debug:
-                        logger.warning(
-                            "chat_debug_provider_output_rejected request_id=%s "
-                            "validation_category=retrieval-reference validation_code=%s "
-                            "allowed_record_ids=%s allowed_claim_ids=%s candidate=%s",
-                            request_id,
-                            error.code,
-                            sorted(retrieved_record_ids),
-                            sorted(retrieved_claim_ids),
-                            json.dumps(candidate, ensure_ascii=False, separators=(",", ":")),
-                        )
-                    raise
-                try:
-                    parts.append(validate_candidate(validated_candidate, bundle))
-                except CandidateValidationError as error:
-                    if app.debug:
-                        logger.warning(
-                            "chat_debug_provider_output_rejected request_id=%s "
-                            "validation_category=candidate-contract validation_code=%s "
-                            "allowed_record_ids=%s allowed_claim_ids=%s candidate=%s",
-                            request_id,
-                            error.code,
-                            sorted(retrieved_record_ids),
-                            sorted(retrieved_claim_ids),
-                            json.dumps(candidate, ensure_ascii=False, separators=(",", ":")),
-                        )
-                    raise
-            events = build_event_stream(
-                request_id,
-                bundle.portfolio.content_version,
-                validated_parts=parts,
-                portfolio_search_used=portfolio_search_used,
-                model=provider_model,
-                usage=usage,
-            )
-        except CandidateValidationError as error:
-            logger.warning(
-                "chat_provider_output_rejected request_id=%s code=%s",
-                request_id,
-                error.code,
-            )
+        if result.get("refusal"):
+            events = build_event_stream(request_id, bundle.portfolio.content_version, refusal=_refusal("unsafe"), portfolio_search_used=portfolio_search_used, model=provider_model, usage=usage)
+        elif isinstance(error, CandidateValidationError):
+            if app.debug:
+                logger.warning(
+                    "chat_debug_provider_output_rejected request_id=%s "
+                    "validation_category=%s validation_code=%s allowed_record_ids=%s "
+                    "allowed_claim_ids=%s candidate=%s",
+                    request_id,
+                    result.get("validation_category", "candidate-contract"),
+                    error.code,
+                    sorted(result.get("record_ids", set())),
+                    sorted(result.get("claim_ids", set())),
+                    json.dumps(
+                        result.get("invalid_candidate", {}),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                )
+            logger.warning("chat_provider_output_rejected request_id=%s code=%s", request_id, error.code)
             events = build_event_stream(
                 request_id,
                 bundle.portfolio.content_version,
                 error={"code": error.code, "message": error.message, "retryable": False},
                 portfolio_search_used=portfolio_search_used,
                 model=provider_model,
+                usage=usage,
             )
-        except ProviderFailure as error:
+        elif isinstance(error, ProviderFailure):
             if app.debug and portfolio_search_used:
                 logger.warning(
                     "chat_debug_provider_output_rejected request_id=%s "
@@ -471,7 +354,10 @@ def create_app(
                 error=_provider_error(error),
                 portfolio_search_used=portfolio_search_used,
                 model=provider_model,
+                usage=usage,
             )
+        else:
+            events = build_event_stream(request_id, bundle.portfolio.content_version, validated_parts=result.get("parts", []), portfolio_search_used=portfolio_search_used, model=provider_model, usage=usage)
         terminal_state = next(
             (event["type"] for event in reversed(events) if event["type"] in {"error", "refusal"}),
             "done",
@@ -483,7 +369,6 @@ def create_app(
             len(events),
         )
         return stream_response(events)
-
     return app
 
 

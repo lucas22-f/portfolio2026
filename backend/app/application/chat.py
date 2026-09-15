@@ -1,4 +1,4 @@
-"""Application-layer chat pipeline — candidate validation, hydration, and NDJSON event building."""
+"""Application-layer chat pipeline — candidate validation, hydration, and event building."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.domain.content import ContentBundle, PortfolioRecord, ProjectLink
 
-CHAT_PROTOCOL_VERSION: Literal["2"] = "2"
+CHAT_PROTOCOL_VERSION: Literal["3"] = "3"
 
 # ---------------------------------------------------------------------------
 # Exception
@@ -54,7 +54,7 @@ class ProjectCardPart(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# NDJSON event models
+# Stable domain event models. Transport framing is handled at the API boundary.
 # ---------------------------------------------------------------------------
 
 
@@ -62,7 +62,7 @@ class StartEvent(BaseModel):
     request_id: str
     sequence: int
     type: Literal["start"] = "start"
-    protocol_version: Literal["2"] = CHAT_PROTOCOL_VERSION
+    protocol_version: Literal["3"] = CHAT_PROTOCOL_VERSION
     content_version: str
 
 
@@ -104,7 +104,7 @@ class DoneEvent(BaseModel):
     request_id: str
     sequence: int
     type: Literal["done"] = "done"
-    protocol_version: Literal["2"] = CHAT_PROTOCOL_VERSION
+    protocol_version: Literal["3"] = CHAT_PROTOCOL_VERSION
     content_version: str
     model: str
     usage: dict[str, int]
@@ -308,7 +308,7 @@ def build_event_stream(
     model: str = "fake",
     usage: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build an ordered list of typed NDJSON event dicts.
+    """Build an ordered list of typed domain event dicts.
 
     Order: start → [tool] → [refusal | error | parts...] → done.
     Refusal or error take precedence over parts (mutually exclusive).

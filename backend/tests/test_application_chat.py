@@ -439,7 +439,7 @@ class TestValidateCandidate:
 
 
 class TestBuildEventStream:
-    """Tests for NDJSON event stream construction."""
+    """Tests for stable chat domain event construction."""
 
     def test_start_done_only_with_no_parts(self) -> None:
         events = build_event_stream(
@@ -495,7 +495,7 @@ class TestBuildEventStream:
                 "request_id": "req-tool",
                 "sequence": 1,
                 "type": "start",
-                "protocol_version": "2",
+                "protocol_version": "3",
                 "content_version": "a" * 64,
             },
             {
@@ -516,7 +516,7 @@ class TestBuildEventStream:
                 "request_id": "req-tool",
                 "sequence": 4,
                 "type": "done",
-                "protocol_version": "2",
+                "protocol_version": "3",
                 "content_version": "a" * 64,
                 "model": "fake",
                 "usage": {"total_tokens": 0},
@@ -746,7 +746,7 @@ def test_done_event_includes_model_and_usage() -> None:
         "request_id": "req-usage",
         "sequence": 2,
         "type": "done",
-        "protocol_version": "2",
+        "protocol_version": "3",
         "content_version": "a" * 64,
         "model": "tested-model",
         "usage": {"total_tokens": 7},
@@ -799,5 +799,5 @@ def test_portfolio_text_requires_non_empty_record_and_claim_references() -> None
 
 def test_event_stream_includes_protocol_version_on_metadata_events() -> None:
     events = build_event_stream("req-v2", "a" * 64)
-    assert events[0]["protocol_version"] == "2"
-    assert events[-1]["protocol_version"] == "2"
+    assert events[0]["protocol_version"] == "3"
+    assert events[-1]["protocol_version"] == "3"

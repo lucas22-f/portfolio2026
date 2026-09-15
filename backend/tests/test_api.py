@@ -41,7 +41,15 @@ def _client(
 
 
 def _events(response: object) -> list[dict[str, object]]:
-    return [json.loads(line) for line in response.text.splitlines() if line]  # type: ignore[attr-defined]
+    return [json.loads(frame.splitlines()[1].removeprefix("data: ")) for frame in response.text.split("\n\n") if frame.startswith("event: ")]  # type: ignore[attr-defined]
+
+
+def _sse_frames(response: object) -> list[tuple[str, dict[str, object]]]:
+    frames = [frame for frame in response.text.split("\n\n") if frame]  # type: ignore[attr-defined]
+    return [
+        (frame.splitlines()[0].removeprefix("event: "), json.loads(frame.splitlines()[1].removeprefix("data: ")))
+        for frame in frames
+    ]
 
 
 def test_health_and_metadata_expose_secret_free_compatibility_fields() -> None:
@@ -60,7 +68,7 @@ def test_health_and_metadata_expose_secret_free_compatibility_fields() -> None:
         "app_version": "test-version",
         "content_version": health.json()["content_version"],
         "model": "fake",
-        "protocol_version": "2",
+        "protocol_version": "3",
     }
 
 
@@ -106,7 +114,7 @@ def test_stream_rejects_log_forging_client_request_ids() -> None:
     assert response.status_code == 422
 
 
-def test_stream_returns_ordered_ndjson_for_supported_grounded_response() -> None:
+def test_stream_returns_ordered_sse_for_supported_grounded_response() -> None:
     provider = FakeProvider(
         candidates=[
             {
@@ -129,7 +137,13 @@ def test_stream_returns_ordered_ndjson_for_supported_grounded_response() -> None
 
     events = _events(response)
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/x-ndjson")
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-cache, no-transform"
+    assert response.headers["connection"] == "keep-alive"
+    assert response.headers["x-accel-buffering"] == "no"
+    frames = _sse_frames(response)
+    assert [name for name, _ in frames] == ["start", "part", "done"]
+    assert [payload for _, payload in frames] == events
     assert [event["type"] for event in events] == ["start", "part", "done"]
     assert [event["sequence"] for event in events] == [1, 2, 3]
     assert events[0]["request_id"] == "c-1"

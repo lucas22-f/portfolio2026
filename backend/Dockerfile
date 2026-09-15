@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir "poetry==2.4.1"
 
 COPY backend/pyproject.toml backend/poetry.lock ./
 COPY backend/README.md ./
-RUN poetry install --only main --sync --no-interaction
+RUN poetry sync --only main --no-interaction
 
 COPY backend/app ./app
 COPY content/v1 /app/content/v1
