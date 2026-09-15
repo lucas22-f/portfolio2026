@@ -941,13 +941,15 @@ def test_openai_provider_rejects_negative_reported_usage(usage: dict[str, int]) 
 
 
 def test_structured_text_delta_extractor_emits_real_sse_text_without_json_envelope() -> None:
-    from app.infrastructure.chat_provider import _StructuredTextDeltaExtractor, _iter_sse_payloads
+    from app.infrastructure.chat_provider import _iter_sse_payloads, _StructuredTextDeltaExtractor
 
     frames = [
-        b'data: {"type":"response.output_text.delta","delta":"{\\"parts\\":[{\\"type\\":\\"text\\",\\"text\\":\\"Hola"}\n',
-        b'\n',
-        b'data: {"type":"response.output_text.delta","delta":" mundo\\",\\"grounding\\":\\"general\\"}]}"}\n',
-        b'\n',
+        b'data: {"type":"response.output_text.delta","delta":"{\\"parts\\":[{'
+        b'\\"type\\":\\"text\\",\\"text\\":\\"Hola"}\n',
+        b"\n",
+        b'data: {"type":"response.output_text.delta","delta":" mundo\\",'
+        b'\\"grounding\\":\\"general\\"}]}"}\n',
+        b"\n",
     ]
     emitted: list[str] = []
     extractor = _StructuredTextDeltaExtractor(emitted.append)

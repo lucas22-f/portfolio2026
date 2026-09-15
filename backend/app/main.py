@@ -71,6 +71,7 @@ def _sse(events: list[dict[str, object]]) -> Iterator[bytes]:
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         yield f"event: {event_type}\ndata: {data}\n\n".encode()
 
+
 def _provider_error(error: ProviderFailure) -> dict[str, object]:
     code = error.code if error.code in _PROVIDER_MESSAGES else "provider-unavailable"
     message, retryable = _PROVIDER_MESSAGES[code]
@@ -161,9 +162,7 @@ def _build_public_evidence(
             continue
         claims_by_id = {claim.claim_id: claim for claim in record.claims}
         matched_claims = [
-            claims_by_id[claim_id]
-            for claim_id in result.matched_claims
-            if claim_id in claims_by_id
+            claims_by_id[claim_id] for claim_id in result.matched_claims if claim_id in claims_by_id
         ]
         if not matched_claims:
             continue
@@ -268,7 +267,13 @@ def create_app(
             prior_output_tokens: int = 0,
             on_text_delta: Callable[[str], None] | None = None,
         ) -> ProviderResult:
-            args: tuple[object, ...] = (message, evidence, tool_call, prior_input_tokens, prior_output_tokens)
+            args: tuple[object, ...] = (
+                message,
+                evidence,
+                tool_call,
+                prior_input_tokens,
+                prior_output_tokens,
+            )
             if isinstance(provider, OpenAIChatProvider):
                 args += (on_text_delta,)
             return await run_in_threadpool(provider.generate, *args)
@@ -282,13 +287,16 @@ def create_app(
             "build_evidence": _build_public_evidence,
             "validate_candidate": validate_candidate,
         }
+
         async def response_generator() -> Iterator[bytes]:
             loop = asyncio.get_running_loop()
             progress: asyncio.Queue[tuple[str, str | None]] = asyncio.Queue(maxsize=128)
 
             def on_text_delta(delta: str) -> None:
                 if delta:
-                    asyncio.run_coroutine_threadsafe(progress.put(("text-delta", delta)), loop).result()
+                    asyncio.run_coroutine_threadsafe(
+                        progress.put(("text-delta", delta)), loop
+                    ).result()
 
             def on_portfolio_search() -> None:
                 progress.put_nowait(("tool", None))
@@ -298,7 +306,17 @@ def create_app(
             graph_task = asyncio.create_task(run_chat_graph(state))
             sequence = 1
             tool_event_emitted = False
-            yield _sse([{"request_id": request_id, "sequence": sequence, "type": "start", "protocol_version": CHAT_PROTOCOL_VERSION, "content_version": bundle.portfolio.content_version}]).__next__()
+            yield _sse(
+                [
+                    {
+                        "request_id": request_id,
+                        "sequence": sequence,
+                        "type": "start",
+                        "protocol_version": CHAT_PROTOCOL_VERSION,
+                        "content_version": bundle.portfolio.content_version,
+                    }
+                ]
+            ).__next__()
             try:
                 while not graph_task.done():
                     try:
@@ -306,14 +324,18 @@ def create_app(
                     except TimeoutError:
                         continue
                     sequence += 1
-                    payload: dict[str, object] = {"request_id": request_id, "sequence": sequence, "type": event_type}
+                    payload: dict[str, object] = {
+                        "request_id": request_id,
+                        "sequence": sequence,
+                        "type": event_type,
+                    }
                     if event_type == "text-delta":
                         payload["text"] = delta or ""
                     else:
                         payload["tool"] = "search_portfolio"
                         tool_event_emitted = True
                     yield _sse([payload]).__next__()
-    
+
                 while not progress.empty():
                     sequence += 1
                     event_type, delta = progress.get_nowait()
@@ -324,7 +346,7 @@ def create_app(
                         payload["tool"] = "search_portfolio"
                         tool_event_emitted = True
                     yield _sse([payload]).__next__()
-    
+
                 async def finalize_events() -> list[dict[str, object]]:
                     result = await graph_task
                     portfolio_search_used = result.get("portfolio_search_used", False)
@@ -334,14 +356,16 @@ def create_app(
                     retrieval_outcome = result.get("retrieval_outcome")
                     if retrieval_outcome is not None:
                         logger.info(
-                            "chat_tool_retrieval_completed request_id=%s classification=%s result_count=%d",
+                            "chat_tool_retrieval_completed request_id=%s "
+                            "classification=%s result_count=%d",
                             request_id,
                             retrieval_outcome.classification,
                             len(retrieval_outcome.results),
                         )
                         if app.debug:
                             logger.info(
-                                "chat_debug_retrieval_outcome request_id=%s query=%r classification=%s "
+                                "chat_debug_retrieval_outcome request_id=%s query=%r "
+                                "classification=%s "
                                 "result_count=%d record_ids=%s",
                                 request_id,
                                 result.get("retrieval_query", ""),
@@ -351,13 +375,14 @@ def create_app(
                             )
                     if completion is not None and error is None and not result.get("refusal"):
                         logger.info(
-                            "chat_provider_completed request_id=%s model=%s candidate_count=%d total_tokens=%d",
+                            "chat_provider_completed request_id=%s model=%s "
+                            "candidate_count=%d total_tokens=%d",
                             request_id,
                             provider_model,
                             len(completion),
                             usage["total_tokens"],
                         )
-    
+
                     if result.get("refusal"):
                         events = build_event_stream(
                             request_id,
@@ -392,7 +417,11 @@ def create_app(
                         events = build_event_stream(
                             request_id,
                             bundle.portfolio.content_version,
-                            error={"code": error.code, "message": error.message, "retryable": False},
+                            error={
+                                "code": error.code,
+                                "message": error.message,
+                                "retryable": False,
+                            },
                             portfolio_search_used=portfolio_search_used,
                             model=provider_model,
                             usage=usage,
@@ -401,15 +430,23 @@ def create_app(
                         if app.debug and portfolio_search_used:
                             logger.warning(
                                 "chat_debug_provider_output_rejected request_id=%s "
-                                "validation_category=provider-contract validation_code=%s parser_stage=%s "
+                                "validation_category=provider-contract "
+                                "validation_code=%s parser_stage=%s "
                                 "response_metadata=%s",
                                 request_id,
                                 error.code,
                                 error.diagnostic_category or "none",
-                                json.dumps(error.diagnostic_metadata, separators=(",", ":"), sort_keys=True),
+                                json.dumps(
+                                    error.diagnostic_metadata, separators=(",", ":"), sort_keys=True
+                                ),
                             )
-                        if error.diagnostic_category is None or error.code == "invalid-provider-output":
-                            logger.warning("chat_provider_failed request_id=%s code=%s", request_id, error.code)
+                        if (
+                            error.diagnostic_category is None
+                            or error.code == "invalid-provider-output"
+                        ):
+                            logger.warning(
+                                "chat_provider_failed request_id=%s code=%s", request_id, error.code
+                            )
                         else:
                             logger.warning(
                                 "chat_provider_failed request_id=%s code=%s diagnostic_category=%s",
@@ -435,7 +472,11 @@ def create_app(
                             usage=usage,
                         )
                     terminal_state = next(
-                        (event["type"] for event in reversed(events) if event["type"] in {"error", "refusal"}),
+                        (
+                            event["type"]
+                            for event in reversed(events)
+                            if event["type"] in {"error", "refusal"}
+                        ),
                         "done",
                     )
                     logger.info(
@@ -445,6 +486,7 @@ def create_app(
                         len(events),
                     )
                     return events
+
                 for event in (await finalize_events())[1:]:
                     if event["type"] == "tool" and tool_event_emitted:
                         continue
@@ -465,6 +507,7 @@ def create_app(
                 "X-Accel-Buffering": "no",
             },
         )
+
     return app
 
 
@@ -494,19 +537,3 @@ def _default_app(*, debug: bool = False) -> FastAPI:
 
 
 app = _default_app()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

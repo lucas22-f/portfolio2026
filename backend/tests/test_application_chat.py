@@ -803,14 +803,20 @@ def test_event_stream_includes_protocol_version_on_metadata_events() -> None:
     assert events[-1]["protocol_version"] == "4"
 
 
-
 def test_event_stream_emits_text_deltas_before_validated_parts() -> None:
     events = build_event_stream(
         request_id="req-delta",
         content_version="a" * 64,
         text_deltas=["Hola", " mundo"],
-        validated_parts=[TextPart(text="Hola mundo", grounding="general", record_ids=[], claim_ids=[])],
+        validated_parts=[
+            TextPart(text="Hola mundo", grounding="general", record_ids=[], claim_ids=[])
+        ],
     )
-    assert [event["type"] for event in events] == ["start", "text-delta", "text-delta", "part", "done"]
+    assert [event["type"] for event in events] == [
+        "start",
+        "text-delta",
+        "text-delta",
+        "part",
+        "done",
+    ]
     assert events[1]["text"] == "Hola"
-

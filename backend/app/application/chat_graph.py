@@ -80,7 +80,9 @@ def after_safety(state: ChatGraphState) -> str:
 
 async def initial_answer(state: ChatGraphState) -> dict[str, object]:
     try:
-        completion = await _invoke(state, state["message"], None, None, 0, 0, state.get("on_text_delta"))
+        completion = await _invoke(
+            state, state["message"], None, None, 0, 0, state.get("on_text_delta")
+        )
     except (ProviderFailure, CandidateValidationError) as error:
         return {"error": error}
     return {"initial_completion": completion, "completion": completion}
@@ -243,11 +245,3 @@ async def run_chat_graph(state: ChatGraphState) -> ChatGraphState:
     if not isinstance(result, dict):
         raise TypeError("compiled chat graph must return a state mapping")
     return cast(ChatGraphState, result)
-
-
-
-
-
-
-
-

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping, Sequence, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -373,9 +373,7 @@ class OpenAIChatProvider(ChatProvider):
         # portion of the 1,024-token aggregate request budget.
         remaining_output_tokens = self._limits.max_output_tokens - prior_output_tokens
         max_output_tokens = (
-            remaining_output_tokens
-            if tool_call is not None
-            else min(512, remaining_output_tokens)
+            remaining_output_tokens if tool_call is not None else min(512, remaining_output_tokens)
         )
         if max_output_tokens <= 0:
             raise ProviderFailure("limit-exceeded", retryable=False)
@@ -442,7 +440,14 @@ class OpenAIChatProvider(ChatProvider):
             "Content-Type": "application/json",
         }
         if on_text_delta is not None and self._transport is _post_json:
-            return self._stream_response(body, headers, prior_input_tokens, prior_output_tokens, tool_call is not None, on_text_delta)
+            return self._stream_response(
+                body,
+                headers,
+                prior_input_tokens,
+                prior_output_tokens,
+                tool_call is not None,
+                on_text_delta,
+            )
         try:
             status, response = self._transport(
                 self._RESPONSES_URL, body, headers, self._limits.timeout_seconds
@@ -495,22 +500,31 @@ class OpenAIChatProvider(ChatProvider):
                         delta = event.get("delta")
                         if isinstance(delta, str):
                             extractor.feed(delta)
-                    elif event_type == "response.completed" and isinstance(event.get("response"), Mapping):
+                    elif event_type == "response.completed" and isinstance(
+                        event.get("response"), Mapping
+                    ):
                         completed = event["response"]
         except TimeoutError:
-            raise ProviderFailure("provider-timeout", retryable=True, diagnostic_category="transport") from None
+            raise ProviderFailure(
+                "provider-timeout", retryable=True, diagnostic_category="transport"
+            ) from None
         except HTTPError as error:
             raise _http_failure(error.code) from None
         except (OSError, URLError, json.JSONDecodeError):
-            raise ProviderFailure("provider-unavailable", retryable=True, diagnostic_category="transport") from None
+            raise ProviderFailure(
+                "provider-unavailable", retryable=True, diagnostic_category="transport"
+            ) from None
         if completed is None:
-            raise ProviderFailure("invalid-provider-output", retryable=False, diagnostic_category="stream-incomplete")
+            raise ProviderFailure(
+                "invalid-provider-output", retryable=False, diagnostic_category="stream-incomplete"
+            )
         return self._parse_response(
             json.dumps(completed, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
             prior_input_tokens=prior_input_tokens,
             prior_output_tokens=prior_output_tokens,
             expect_tool_result=expect_tool_result,
         )
+
     def _ensure_projected_cost(self, input_tokens: int, output_tokens: int) -> None:
         projected = (
             input_tokens * self._limits.input_cost_per_million
@@ -661,45 +675,39 @@ def _post_json(url: str, body: bytes, headers: dict[str, str], timeout: float) -
         return response.status, response.read()
 
 
-
-
-
-
-
-
 class _StructuredTextDeltaExtractor:
     """Incrementally decode the structured response's text property."""
 
     def __init__(self, emit: Callable[[str], None]) -> None:
         self._emit = emit
-        self._raw = ''
-        self._emitted = ''
+        self._raw = ""
+        self._emitted = ""
 
     def feed(self, delta: str) -> None:
         self._raw += delta
         match = re.search(r'"text"\s*:\s*"', self._raw)
         if match is None:
             return
-        value = self._raw[match.end():]
+        value = self._raw[match.end() :]
         escaped = False
         end = len(value)
         for index, char in enumerate(value):
             if escaped:
                 escaped = False
-            elif char == '\\':
+            elif char == "\\":
                 escaped = True
             elif char == '"':
                 end = index
                 break
         encoded = value[:end]
-        if encoded.endswith('\\') or re.search(r'\\u[0-9a-fA-F]{0,3}$', encoded):
+        if encoded.endswith("\\") or re.search(r"\\u[0-9a-fA-F]{0,3}$", encoded):
             return
         try:
             decoded = json.loads(f'"{encoded}"')
         except json.JSONDecodeError:
             return
         if decoded.startswith(self._emitted):
-            addition = decoded[len(self._emitted):]
+            addition = decoded[len(self._emitted) :]
             if addition:
                 self._emit(addition)
             self._emitted = decoded
@@ -711,7 +719,7 @@ def _iter_sse_payloads(response: object) -> Iterator[Mapping[str, object]]:
     for line in response:  # type: ignore[union-attr]
         if not isinstance(line, bytes):
             continue
-        if line in {b'\n', b'\r\n'}:
+        if line in {b"\n", b"\r\n"}:
             if frame is not None:
                 try:
                     payload = json.loads(frame)
@@ -720,8 +728,5 @@ def _iter_sse_payloads(response: object) -> Iterator[Mapping[str, object]]:
                 if isinstance(payload, Mapping):
                     yield payload
             frame = None
-        elif line.startswith(b'data: '):
-            frame = line[6:].rstrip(b'\r\n')
-
-
-
+        elif line.startswith(b"data: "):
+            frame = line[6:].rstrip(b"\r\n")

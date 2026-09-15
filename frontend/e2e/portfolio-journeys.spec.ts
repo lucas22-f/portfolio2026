@@ -45,7 +45,7 @@ test('renders a mocked grounded answer with its source and project card', async 
         type: 'start',
         request_id: 'grounded',
         sequence: 1,
-        protocol_version: '3',
+        protocol_version: '4',
         content_version: CONTENT_VERSION,
       },
       {
@@ -55,9 +55,15 @@ test('renders a mocked grounded answer with its source and project card', async 
         tool: 'search_portfolio',
       },
       {
-        type: 'part',
+        type: 'text-delta',
         request_id: 'grounded',
         sequence: 3,
+        text: 'Lucas implementó sistemas RAG sobre Fury.',
+      },
+      {
+        type: 'part',
+        request_id: 'grounded',
+        sequence: 4,
         part: {
           type: 'text',
           grounding: 'portfolio',
@@ -69,13 +75,13 @@ test('renders a mocked grounded answer with its source and project card', async 
       {
         type: 'part',
         request_id: 'grounded',
-        sequence: 4,
+        sequence: 5,
         part: { type: 'source', record_id: 'project-rag-fury', label: 'CV, página 1' },
       },
       {
         type: 'part',
         request_id: 'grounded',
-        sequence: 5,
+        sequence: 6,
         part: {
           type: 'project-card',
           record_id: 'project-rag-fury',
@@ -87,8 +93,8 @@ test('renders a mocked grounded answer with its source and project card', async 
       {
         type: 'done',
         request_id: 'grounded',
-        sequence: 6,
-        protocol_version: '3',
+        sequence: 7,
+        protocol_version: '4',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 12 },
@@ -120,7 +126,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'start',
         request_id: 'refusal',
         sequence: 1,
-        protocol_version: '3',
+        protocol_version: '4',
         content_version: CONTENT_VERSION,
       },
       {
@@ -135,7 +141,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'done',
         request_id: 'refusal',
         sequence: 3,
-        protocol_version: '3',
+        protocol_version: '4',
         content_version: CONTENT_VERSION,
         model: 'mock-model',
         usage: { total_tokens: 0 },
@@ -154,7 +160,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         type: 'start',
         request_id: 'invalid',
         sequence: 1,
-        protocol_version: '3',
+        protocol_version: '4',
         content_version: CONTENT_VERSION,
       },
       {

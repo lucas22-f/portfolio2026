@@ -344,14 +344,14 @@ def build_event_stream(
             )
         sequence += 1
         events.append(
-            TextDeltaEvent(request_id=request_id, sequence=sequence, text=delta).model_dump(mode="json")
+            TextDeltaEvent(request_id=request_id, sequence=sequence, text=delta).model_dump(
+                mode="json"
+            )
         )
 
     if portfolio_search_used:
         sequence += 1
-        events.append(
-            ToolEvent(request_id=request_id, sequence=sequence).model_dump(mode="json")
-        )
+        events.append(ToolEvent(request_id=request_id, sequence=sequence).model_dump(mode="json"))
 
     if refusal is not None:
         sequence += 1
@@ -407,5 +407,3 @@ def build_event_stream(
     )
 
     return events
-
-
