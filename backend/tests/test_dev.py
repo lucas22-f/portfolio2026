@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app import dev
@@ -28,10 +30,13 @@ def test_development_app_loads_local_openai_configuration(tmp_path: Path, monkey
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
     monkeypatch.setattr(dev, "_ENV_FILE", environment_file)
 
-    client = TestClient(dev._development_app())
+    development_app = FastAPI()
+    with patch("app.dev._default_app", return_value=development_app) as default_app:
+        assert dev._development_app() is development_app
 
-    assert client.get("/health").status_code == 200
-    assert client.get("/api/v1/metadata").json()["model"] == "test-model"
+    default_app.assert_called_once_with(debug=True)
+    assert os.environ["OPENAI_API_KEY"] == "test-key"
+    assert os.environ["OPENAI_MODEL"] == "test-model"
 
 
 def test_development_app_is_unavailable_without_openai_key(tmp_path: Path, monkeypatch) -> None:
