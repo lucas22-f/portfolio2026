@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, START, StateGraph
