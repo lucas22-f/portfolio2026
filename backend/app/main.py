@@ -29,6 +29,8 @@ from app.infrastructure.chat_provider import (
     OpenAIChatProvider,
     ProviderFailure,
     ProviderLimits,
+    ProviderResult,
+    ToolCall,
 )
 
 APP_VERSION = "0.1.0"
@@ -257,8 +259,21 @@ def create_app(
             logger.warning("chat_request_unavailable request_id=%s", request_id)
             return JSONResponse(status_code=503, content={"status": "unavailable"})
 
-        async def invoke_model(*args: object):  # type: ignore[no-untyped-def]
-            return await run_in_threadpool(provider.generate, *args)
+        async def invoke_model(
+            message: str,
+            evidence: Mapping[str, object] | None = None,
+            tool_call: ToolCall | None = None,
+            prior_input_tokens: int = 0,
+            prior_output_tokens: int = 0,
+        ) -> ProviderResult:
+            return await run_in_threadpool(
+                provider.generate,
+                message,
+                evidence,
+                tool_call,
+                prior_input_tokens,
+                prior_output_tokens,
+            )
 
         state: ChatGraphState = {
             "message": request.message,

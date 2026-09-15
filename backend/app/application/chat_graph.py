@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from app.application.chat import CandidateValidationError, ProjectCardPart, SourcePart, TextPart
 from app.domain.content import ContentBundle
@@ -60,7 +61,7 @@ async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
     async def call(_: object) -> ProviderResult:
         return await state["invoke_model"](*args)
 
-    return await RunnableLambda(call).ainvoke(None)
+    return await RunnableLambda[object, ProviderResult](call).ainvoke(None)
 
 
 async def validate_safety(state: ChatGraphState) -> dict[str, object]:
@@ -188,15 +189,17 @@ def finalize(_: ChatGraphState) -> dict[str, object]:
     return {}
 
 
-def _graph() -> Any:
-    graph = StateGraph(ChatGraphState)
+def _graph() -> CompiledStateGraph[ChatGraphState, None, ChatGraphState, ChatGraphState]:
+    graph: StateGraph[ChatGraphState, None, ChatGraphState, ChatGraphState] = StateGraph(
+        ChatGraphState
+    )
     graph.add_node("validate_safety", validate_safety)
     graph.add_node("initial_answer", initial_answer)
     graph.add_node("retrieve", retrieve)
     graph.add_node("grounded_answer", grounded_answer)
     graph.add_node("fallback", deterministic_fallback)
     graph.add_node("validate_output", validate_output)
-    graph.add_node("finalize", finalize)
+    graph.add_node("finalize", RunnableLambda[ChatGraphState, dict[str, object]](finalize))
     graph.add_edge(START, "validate_safety")
     graph.add_conditional_edges(
         "validate_safety",
@@ -230,4 +233,7 @@ def _graph() -> Any:
 
 async def run_chat_graph(state: ChatGraphState) -> ChatGraphState:
     """Run one request without checkpoints or persistent graph state."""
-    return await _graph().ainvoke(state)
+    result = await _graph().ainvoke(state)
+    if not isinstance(result, dict):
+        raise TypeError("compiled chat graph must return a state mapping")
+    return cast(ChatGraphState, result)
