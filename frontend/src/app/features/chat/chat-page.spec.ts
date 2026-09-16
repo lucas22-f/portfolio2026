@@ -88,6 +88,35 @@ describe('ChatPage', () => {
     expect(page.textContent).not.toContain('Fuente:');
   });
 
+  it('keeps consecutive successful turns in chronological transcript order without duplicates', async () => {
+    let call = 0;
+    const client = {
+      checkCompatibility: async () => true,
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        call += 1;
+        const requestId = `r-${call}`;
+        const response = call === 1 ? 'Primera respuesta.' : 'Segunda respuesta.';
+        onEvent({ request_id: requestId, sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        onEvent({ request_id: requestId, sequence: 2, type: 'part', part: { type: 'text', grounding: 'general', text: response } });
+        onEvent({ request_id: requestId, sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+      },
+    };
+    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.componentInstance.message = 'Primera consulta.';
+    await fixture.componentInstance.submit();
+    fixture.componentInstance.message = 'Segunda consulta.';
+    await fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const transcript = fixture.nativeElement.querySelector('[data-testid="chat-transcript"]')?.textContent ?? '';
+    expect(transcript.indexOf('Primera consulta.')).toBeLessThan(transcript.indexOf('Primera respuesta.'));
+    expect(transcript.indexOf('Primera respuesta.')).toBeLessThan(transcript.indexOf('Segunda consulta.'));
+    expect(transcript.indexOf('Segunda consulta.')).toBeLessThan(transcript.indexOf('Segunda respuesta.'));
+    expect(transcript.match(/Primera consulta\./g)).toHaveLength(1);
+    expect(transcript.match(/Segunda consulta\./g)).toHaveLength(1);
+  });
+
   it('derives only safe lifecycle labels from validated chat state', async () => {
     const client = { checkCompatibility: async () => true, stream: async () => undefined };
     await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
@@ -111,7 +140,9 @@ describe('ChatPage', () => {
   it('keeps invalid provider output on the safe non-retryable validation path', async () => {
     const client = {
       checkCompatibility: async () => true,
-      stream: async () => {
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        onEvent({ request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Vista previa sin validar.' });
         throw Object.assign(new Error('invalid-provider-output'), {
           code: 'invalid-provider-output',
           retryable: false,
@@ -133,6 +164,8 @@ describe('ChatPage', () => {
       'No pude validar la respuesta.',
     );
     expect(page.textContent).not.toContain('Reintentar');
+    expect(page.querySelector('[data-testid="streaming-assistant-text"]')).toBeNull();
+    expect(page.textContent).not.toContain('Vista previa sin validar.');
     expect(fixture.componentInstance.state().retryable).toBe(false);
   });
 
@@ -187,7 +220,7 @@ describe('ChatPage', () => {
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
 
-    expect(page.querySelector('section')?.classList.contains('h-svh')).toBe(true);
+    expect(page.querySelector('section')?.classList.contains('min-h-svh')).toBe(true);
     expect(page.querySelector('section > div')?.classList.contains('max-w-4xl')).toBe(true);
     expect(page.querySelector('section > div')?.classList.contains('sm:px-8')).toBe(true);
     expect(page.querySelector('textarea')?.classList.contains('min-h-24')).toBe(true);
@@ -215,7 +248,7 @@ describe('ChatPage', () => {
     expect(returnCount).toBe(1);
   });
 
-  it('keeps the assistant as a viewport-bound layout with an internal transcript scroller', async () => {
+  it('keeps a natural-height conversation with a bounded transcript scroller', async () => {
     const client = { checkCompatibility: async () => true, stream: async () => undefined };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
@@ -228,7 +261,7 @@ describe('ChatPage', () => {
     expect(page.querySelector('[data-testid="chat-viewport"]')).not.toBeNull();
     expect(page.querySelector('[data-testid="chat-transcript"]')).not.toBeNull();
     expect(page.querySelector('[data-testid="chat-composer"]')).not.toBeNull();
-    expect(page.querySelector('[data-testid="chat-viewport"]')?.classList.contains('h-svh')).toBe(
+    expect(page.querySelector('[data-testid="chat-viewport"]')?.classList.contains('min-h-svh')).toBe(
       true,
     );
     expect(page.querySelector('[data-testid="chat-transcript"]')?.classList.contains('overflow-y-auto')).toBe(

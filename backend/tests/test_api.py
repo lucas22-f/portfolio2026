@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi.testclient import TestClient
+from pytest import LogCaptureFixture
 
 from app.infrastructure.chat_provider import ChatProvider, ProviderResult, ToolCall
 from app.infrastructure.pdf_rag import PdfChunk, PdfSearchResult
@@ -85,3 +87,31 @@ def test_no_relevant_pdf_result_uses_safe_fallback() -> None:
         )
     )
     assert events[2]["part"]["text"] == "No encontré información del portfolio sobre ese tema."
+
+
+def test_chat_observability_logs_are_payload_free(caplog: LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    secret_prompt = "private prompt must not be logged"
+    result = PdfSearchResult(PdfChunk("chunk-1", "private PDF chunk", 7, "CV.pdf"), 0.1)
+    client = TestClient(
+        create_app(
+            retriever=FakeRetriever([result]),
+            provider=ToolThenAnswerProvider(
+                {"type": "text", "text": "private model text", "grounding": "portfolio"}
+            ),
+            content_version="static-version",
+        )
+    )
+
+    client.post(
+        "/api/v1/chat/stream",
+        json={"message": secret_prompt, "locale": "es", "client_request_id": "log-1"},
+    )
+
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "chat.request_accepted" in messages
+    assert "chat.sse_event_emitted" in messages
+    assert '"event_type": "done"' in messages
+    assert secret_prompt not in messages
+    assert "private PDF chunk" not in messages
+    assert "private model text" not in messages

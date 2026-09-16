@@ -92,6 +92,10 @@ test('renders a mocked grounded answer with a PDF page citation', async ({ page 
   await page.getByLabel('Tu consulta').fill('¿Qué proyectos de RAG realizó?');
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
 
+  await expect(page.getByTestId('active-user-message')).toContainText(
+    '¿Qué proyectos de RAG realizó?',
+  );
+  await expect(page.getByLabel('Tu consulta')).toHaveValue('');
   await expect(page.getByText('Lucas implementó sistemas RAG sobre Fury.')).toBeVisible();
   await expect(page.getByTestId('assistant-activity')).toContainText(
     'Respuesta completada con información del portfolio',
@@ -148,9 +152,15 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
         content_version: CONTENT_VERSION,
       },
       {
-        type: 'part',
+        type: 'text-delta',
         request_id: 'invalid',
         sequence: 2,
+        text: 'Vista previa sin validar.',
+      },
+      {
+        type: 'part',
+        request_id: 'invalid',
+        sequence: 3,
         part: { type: 'script', value: '<script>unsafe()</script>' },
       },
     ]),
@@ -159,6 +169,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
   await page.getByLabel('Tu consulta').fill('Consulta válida');
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
   await expect(page.getByRole('alert')).toContainText('No pude validar la respuesta.');
+  await expect(page.getByText('Vista previa sin validar.')).toHaveCount(0);
   await expect(page.locator('script:not([src])')).toHaveCount(0);
 });
 

@@ -111,6 +111,8 @@ class ProviderFailure(RuntimeError):
         retryable: bool,
         diagnostic_category: str | None = None,
         diagnostic_metadata: Mapping[str, object] | None = None,
+        total_input_tokens: int | None = None,
+        total_output_tokens: int | None = None,
     ) -> None:
         self.code = code
         self.retryable = retryable
@@ -118,6 +120,10 @@ class ProviderFailure(RuntimeError):
         # This contains only a deliberately allow-listed Responses envelope summary.
         # It must never contain provider text, prompts, evidence, or raw payloads.
         self.diagnostic_metadata = dict(diagnostic_metadata or {})
+        # Retain only validated aggregate usage.  The graph needs this to make a
+        # bounded retry account for a rejected final Responses completion.
+        self.total_input_tokens = total_input_tokens
+        self.total_output_tokens = total_output_tokens
         super().__init__(code)
 
 
@@ -248,7 +254,7 @@ class ProviderLimits:
     cost_limit_usd: float = 0.05
     max_input_tokens: int = 4_000
     # A portfolio answer may make two Responses API calls. This is their combined cap.
-    max_output_tokens: int = 1_024
+    max_output_tokens: int = 4_048
     input_cost_per_million: float = 0.0
     output_cost_per_million: float = 0.0
 
@@ -343,11 +349,11 @@ class OpenAIChatProvider(ChatProvider):
         instructions = _CHAT_INSTRUCTIONS
         tools: list[dict[str, object]] | None = [_SEARCH_PORTFOLIO_TOOL]
         # The initial call also answers general questions, so it retains its
-        # 512-token allowance. A grounded follow-up receives only the unspent
-        # portion of the 1,024-token aggregate request budget.
+        # 1024-token allowance. A grounded follow-up receives only the unspent
+        # portion of the 4,048-token aggregate request budget.
         remaining_output_tokens = self._limits.max_output_tokens - prior_output_tokens
         max_output_tokens = (
-            remaining_output_tokens if tool_call is not None else min(512, remaining_output_tokens)
+            remaining_output_tokens if tool_call is not None else min(1024, remaining_output_tokens)
         )
         if max_output_tokens <= 0:
             raise ProviderFailure("limit-exceeded", retryable=False)
@@ -516,6 +522,8 @@ class OpenAIChatProvider(ChatProvider):
         expect_tool_result: bool,
     ) -> ProviderResult:
         diagnostic_metadata: dict[str, object] = {}
+        total_input_tokens: int | None = None
+        total_output_tokens: int | None = None
         try:
             payload = json.loads(response)
             if not isinstance(payload, Mapping):
@@ -631,6 +639,10 @@ class OpenAIChatProvider(ChatProvider):
         except ProviderFailure as error:
             if not error.diagnostic_metadata:
                 error.diagnostic_metadata = diagnostic_metadata
+            if error.total_input_tokens is None:
+                error.total_input_tokens = total_input_tokens
+            if error.total_output_tokens is None:
+                error.total_output_tokens = total_output_tokens
             raise
 
     def _ensure_actual_cost(self, input_tokens: int, output_tokens: int) -> None:

@@ -5,14 +5,20 @@ import { API_BASE_URL } from '../../core/config/api-base-url';
 
 export const CHAT_PROTOCOL_VERSION = '5';
 export type TextPart = {
-  type: 'text'; text: string; grounding: 'general' | 'portfolio';
+  type: 'text';
+  text: string;
+  grounding: 'general' | 'portfolio';
 };
 export type SourcePart = { type: 'source'; filename: string; page: number };
 export type ChatPart = TextPart | SourcePart;
 
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
-  | (EventBase & { type: 'start'; protocol_version: typeof CHAT_PROTOCOL_VERSION; content_version: string })
+  | (EventBase & {
+      type: 'start';
+      protocol_version: typeof CHAT_PROTOCOL_VERSION;
+      content_version: string;
+    })
   | (EventBase & { type: 'text-delta'; text: string })
   | (EventBase & { type: 'tool'; tool: 'search_portfolio' })
   | (EventBase & { type: 'part'; part: ChatPart })
@@ -45,6 +51,13 @@ const INVALID_OUTPUT = 'invalid-provider-output';
 const STREAM_CLOSED = 'stream-closed';
 const HTML_TAG = /<\s*\/?[a-z][^>]*>/i;
 
+type ChatLogFields = Record<string, string | number | boolean | undefined>;
+
+export function logChatLifecycle(event: string, fields: ChatLogFields): void {
+  // Keep browser diagnostics metadata-only: never pass message, SSE data, or text parts.
+  console.info('chat_observability', { event, ...fields });
+}
+
 export class ChatStreamError extends Error {
   constructor(
     readonly code: typeof INVALID_OUTPUT | typeof STREAM_CLOSED | 'content-incompatible',
@@ -55,7 +68,14 @@ export class ChatStreamError extends Error {
 }
 
 export function createChatState(): ChatState {
-  return { status: 'idle', parts: [], announcement: '', retryable: false, portfolioSearchUsed: false, streamedText: '' };
+  return {
+    status: 'idle',
+    parts: [],
+    announcement: '',
+    retryable: false,
+    portfolioSearchUsed: false,
+    streamedText: '',
+  };
 }
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
@@ -75,10 +95,17 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         announcement: 'Recibiendo respuesta.',
       };
     case 'text-delta':
-      return { ...state, streamedText: state.streamedText + event.text, announcement: 'El asistente está respondiendo.' };
+      return {
+        ...state,
+        streamedText: state.streamedText + event.text,
+        announcement: 'El asistente está respondiendo.',
+      };
     case 'part':
       return {
         ...state,
+        // The provider preview is intentionally untrusted.  A final server-owned
+        // part replaces it atomically, so a completed answer is rendered once even
+        // when the provider's last delta is split differently from its final JSON.
         streamedText: '',
         parts: [...state.parts, event.part],
         announcement: 'Se agregó una respuesta respaldada.',
@@ -93,21 +120,43 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
     case 'done':
       return {
         ...state,
-        status: state.terminalOutcome === 'refusal' ? 'refused' : state.terminalOutcome === 'error' ? 'error' : 'complete',
+        status:
+          state.terminalOutcome === 'refusal'
+            ? 'refused'
+            : state.terminalOutcome === 'error'
+              ? 'error'
+              : 'complete',
         announcement: state.terminalOutcome ? state.announcement : 'Respuesta completa.',
         retryable: state.terminalOutcome ? state.retryable : false,
         model: event.model,
         usage: event.usage,
       };
     case 'refusal':
-      return { ...state, streamedText: '', status: 'refused', terminalOutcome: 'refusal', announcement: event.message, retryable: false };
+      return {
+        ...state,
+        streamedText: '',
+        status: 'refused',
+        terminalOutcome: 'refusal',
+        announcement: event.message,
+        retryable: false,
+      };
     case 'error':
-      return { ...state, streamedText: '', status: 'error', terminalOutcome: 'error', announcement: event.message, retryable: event.retryable };
+      return {
+        ...state,
+        streamedText: '',
+        status: 'error',
+        terminalOutcome: 'error',
+        announcement: event.message,
+        retryable: event.retryable,
+      };
   }
 }
 
 export function parseSseEvents(sse: string): ChatEvent[] {
-  const events = sse.split(/\r?\n\r?\n/).filter(Boolean).map(parseSseEvent);
+  const events = sse
+    .split(/\r?\n\r?\n/)
+    .filter(Boolean)
+    .map(parseSseEvent);
   let sequence = 1;
   let requestId: string | undefined;
   for (const event of events) {
@@ -136,8 +185,7 @@ export function parseSseEvents(sse: string): ChatEvent[] {
         if (!portfolioSearchSeen) throw invalid();
         portfolioGroundingSeen = true;
       }
-      if (event.part.type === 'source' && !portfolioGroundingSeen)
-        throw invalid();
+      if (event.part.type === 'source' && !portfolioGroundingSeen) throw invalid();
     }
     terminalOutcomeSeen = event.type === 'refusal' || event.type === 'error';
   }
@@ -198,7 +246,12 @@ function validateEvent(value: unknown): ChatEvent {
   const base = eventBase(raw);
   if (raw['type'] === 'start')
     return raw['protocol_version'] === CHAT_PROTOCOL_VERSION
-      ? { ...base, type: 'start', protocol_version: CHAT_PROTOCOL_VERSION, content_version: text(raw['content_version']) }
+      ? {
+          ...base,
+          type: 'start',
+          protocol_version: CHAT_PROTOCOL_VERSION,
+          content_version: text(raw['content_version']),
+        }
       : invalid();
   if (raw['type'] === 'text-delta') return { ...base, type: 'text-delta', text: text(raw['text']) };
   if (raw['type'] === 'tool')
@@ -247,8 +300,14 @@ export class ChatClient {
     try {
       const response = await fetch(`${API_BASE_URL}/api/v1/metadata`);
       if (!response.ok) return false;
-      const metadata = (await response.json()) as { content_version?: unknown; protocol_version?: unknown };
-      return metadata.content_version === this.expectedContentVersion && metadata.protocol_version === CHAT_PROTOCOL_VERSION;
+      const metadata = (await response.json()) as {
+        content_version?: unknown;
+        protocol_version?: unknown;
+      };
+      return (
+        metadata.content_version === this.expectedContentVersion &&
+        metadata.protocol_version === CHAT_PROTOCOL_VERSION
+      );
     } catch {
       return false;
     }
@@ -260,6 +319,8 @@ export class ChatClient {
     signal?: AbortSignal,
   ): Promise<void> {
     const clientRequestId = crypto.randomUUID();
+    const startedAt = performance.now();
+    logChatLifecycle('chat.request_started', { client_request_id: clientRequestId });
     let response: Response;
     try {
       response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
@@ -269,9 +330,31 @@ export class ChatClient {
         signal,
       });
     } catch {
+      logChatLifecycle(signal?.aborted ? 'chat.request_aborted' : 'chat.request_error', {
+        client_request_id: clientRequestId,
+        terminal_outcome: signal?.aborted ? 'aborted' : 'network-error',
+        error_code: signal?.aborted ? 'aborted' : 'provider-unavailable',
+        retryable: !signal?.aborted,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
       throw new Error('provider-unavailable');
     }
-    if (!response.ok || !response.body || !response.headers.get('content-type')?.startsWith('text/event-stream')) {
+    const contentType = response.headers.get('content-type') ?? 'missing';
+    logChatLifecycle('chat.response_accepted', {
+      client_request_id: clientRequestId,
+      status_code: response.status,
+      content_type: contentType.split(';', 1)[0],
+      elapsed_ms: Math.round(performance.now() - startedAt),
+    });
+    if (!response.ok || !response.body || !contentType.startsWith('text/event-stream')) {
+      logChatLifecycle('chat.request_error', {
+        client_request_id: clientRequestId,
+        status_code: response.status,
+        content_type: contentType.split(';', 1)[0],
+        error_code: 'provider-unavailable',
+        retryable: true,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
       throw new Error('provider-unavailable');
     }
     const reader = response.body.getReader();
@@ -304,8 +387,7 @@ export class ChatClient {
           if (!portfolioSearchSeen) return invalid();
           portfolioGroundingSeen = true;
         }
-        if (event.part.type === 'source' && !portfolioGroundingSeen)
-          return invalid();
+        if (event.part.type === 'source' && !portfolioGroundingSeen) return invalid();
       }
       if (
         (event.type === 'start' || event.type === 'done') &&
@@ -317,14 +399,48 @@ export class ChatClient {
       expectedSequence += 1;
       terminalOutcomeSeen ||= event.type === 'error' || event.type === 'refusal';
       doneSeen ||= event.type === 'done';
+      logChatLifecycle('chat.event_received', {
+        client_request_id: clientRequestId,
+        request_id: event.request_id,
+        event_type: event.type,
+        sequence: event.sequence,
+        ...(event.type === 'error' || event.type === 'refusal'
+          ? { error_code: event.code, retryable: event.retryable }
+          : {}),
+      });
       onEvent(event);
     };
-    const parseAndEmit = (frame: string): void => emit(parseSseEvent(frame));
+    const parseAndEmit = (frame: string): void => {
+      try {
+        emit(parseSseEvent(frame));
+      } catch (error) {
+        const streamError =
+          error instanceof ChatStreamError
+            ? error
+            : new ChatStreamError('invalid-provider-output', false);
+        logChatLifecycle('chat.request_error', {
+          client_request_id: clientRequestId,
+          request_id: requestId,
+          error_code: streamError.code,
+          retryable: streamError.retryable,
+          elapsed_ms: Math.round(performance.now() - startedAt),
+        });
+        throw error;
+      }
+    };
     for (;;) {
       let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
         chunk = await reader.read();
       } catch {
+        logChatLifecycle(signal?.aborted ? 'chat.stream_aborted' : 'chat.request_error', {
+          client_request_id: clientRequestId,
+          request_id: requestId,
+          terminal_outcome: signal?.aborted ? 'aborted' : 'read-error',
+          error_code: signal?.aborted ? 'aborted' : 'provider-unavailable',
+          retryable: !signal?.aborted,
+          elapsed_ms: Math.round(performance.now() - startedAt),
+        });
         throw new Error('provider-unavailable');
       }
       if (chunk.done) break;
@@ -337,19 +453,36 @@ export class ChatClient {
       if (index < 0) continue;
       const complete = pending.slice(0, index);
       pending = pending.slice(index + lastBoundary![0].length);
-      complete.split(/\r?\n\r?\n/).filter(Boolean).forEach(parseAndEmit);
+      complete
+        .split(/\r?\n\r?\n/)
+        .filter(Boolean)
+        .forEach(parseAndEmit);
     }
-    if (pending.trim()) throw invalid();
+    if (pending.trim()) {
+      logChatLifecycle('chat.request_error', {
+        client_request_id: clientRequestId,
+        request_id: requestId,
+        error_code: INVALID_OUTPUT,
+        retryable: false,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
+      throw invalid();
+    }
     if (!doneSeen) {
+      logChatLifecycle('chat.request_error', {
+        client_request_id: clientRequestId,
+        request_id: requestId,
+        error_code: STREAM_CLOSED,
+        retryable: true,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
       throw new ChatStreamError(STREAM_CLOSED, true);
     }
+    logChatLifecycle('chat.stream_completed', {
+      client_request_id: clientRequestId,
+      request_id: requestId,
+      terminal_outcome: terminalOutcomeSeen ? 'terminal-event' : 'done',
+      elapsed_ms: Math.round(performance.now() - startedAt),
+    });
   }
 }
-
-
-
-
-
-
-
-

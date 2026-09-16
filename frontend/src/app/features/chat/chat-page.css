@@ -2,6 +2,47 @@
   display: block;
 }
 
+.chat-transcript {
+  overflow-anchor: auto;
+  scrollbar-gutter: stable;
+  scroll-padding-bottom: 2rem;
+}
+
+/* Sticky composer: stays pinned to the viewport bottom while the page or
+   transcript scrolls. In-flow (not fixed), so it never overlaps messages;
+   bottom padding preserves desktop rhythm and the iOS safe-area inset. */
+.chat-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  padding-bottom: max(1.25rem, calc(1rem + env(safe-area-inset-bottom)));
+}
+
+.chat-streaming-bubble {
+  min-block-size: 5.5rem;
+  overflow-anchor: none;
+  contain: layout style;
+}
+
+.chat-streaming-text {
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.chat-composer-input:focus-visible {
+  border-radius: 0.375rem;
+  outline: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+@media (forced-colors: active) {
+  .chat-composer-input:focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
 .chat-stream-caret {
   display: inline-block;
   width: 0.45rem;

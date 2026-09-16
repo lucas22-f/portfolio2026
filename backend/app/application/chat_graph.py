@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import TypedDict, cast
 
@@ -39,6 +40,7 @@ class ChatGraphState(TypedDict, total=False):
     usage: dict[str, int]
     retrieval_results: list[PdfSearchResult]
     retrieval_query: str
+    pending_text_deltas: list[str]
     on_text_delta: Callable[[str], None]
     on_portfolio_search: Callable[[], None]
 
@@ -62,7 +64,11 @@ def after_safety(state: ChatGraphState) -> str:
 async def initial_answer(state: ChatGraphState) -> dict[str, object]:
     try:
         completion = await _invoke(
-            state, state["message"], None, None, 0, 0, state.get("on_text_delta")
+            # Do not expose an initial answer before the graph knows whether it is
+            # a general answer or must be grounded in the PDF.  A portfolio claim
+            # without a tool call is correctly rejected later, but used to leak a
+            # partial preview before that rejection.
+            state, state["message"], None, None, 0, 0, None
         )
     except (ProviderFailure, CandidateValidationError) as error:
         return {"error": error}
@@ -82,7 +88,9 @@ async def retrieve(state: ChatGraphState) -> dict[str, object]:
     completion = state["initial_completion"]
     assert completion.tool_call is not None
     try:
-        results = state["retriever"].search(completion.tool_call.query)
+        # search() performs blocking network (embeddings) and Chroma I/O, so
+        # offload it to a worker thread to avoid stalling the event loop.
+        results = await asyncio.to_thread(state["retriever"].search, completion.tool_call.query)
     except PdfRetrievalError:
         results = []
     citations = [PdfCitation(item.chunk.filename, item.chunk.page) for item in results]
@@ -108,6 +116,12 @@ def after_retrieval(state: ChatGraphState) -> str:
 
 async def grounded_answer(state: ChatGraphState) -> dict[str, object]:
     initial = state["initial_completion"]
+    buffered_deltas: list[str] = []
+
+    def buffer_delta(delta: str) -> None:
+        if delta:
+            buffered_deltas.append(delta)
+
     try:
         completion = await _invoke(
             state,
@@ -116,13 +130,45 @@ async def grounded_answer(state: ChatGraphState) -> dict[str, object]:
             initial.tool_call,
             initial.total_input_tokens,
             initial.total_output_tokens,
-            state.get("on_text_delta"),
+            buffer_delta,
         )
         if completion.tool_call is not None:
             raise ProviderFailure("invalid-provider-output", retryable=False)
     except (ProviderFailure, CandidateValidationError) as error:
-        return {"error": error}
-    return {"completion": completion}
+        if (
+            isinstance(error, ProviderFailure)
+            and error.diagnostic_metadata.get("incomplete_reason") == "max_output_tokens"
+        ):
+            # The grounded attempt was cut off by the aggregate output budget, so a
+            # retry would run with an even smaller remaining budget and fail again.
+            return {"error": error}
+        if (
+            not isinstance(error, ProviderFailure)
+            or error.code != "invalid-provider-output"
+            or error.total_input_tokens is None
+            or error.total_output_tokens is None
+        ):
+            return {"error": error}
+        # The completed Responses envelope was structurally rejected after it
+        # reported usage. Retry this exact grounded request once, carrying that
+        # usage forward so provider limits remain cumulative. Never replay the
+        # rejected attempt's preview deltas.
+        buffered_deltas = []
+        try:
+            completion = await _invoke(
+                state,
+                state["message"],
+                state["evidence"],
+                initial.tool_call,
+                error.total_input_tokens,
+                error.total_output_tokens,
+                buffer_delta,
+            )
+            if completion.tool_call is not None:
+                raise ProviderFailure("invalid-provider-output", retryable=False)
+        except (ProviderFailure, CandidateValidationError) as retry_error:
+            return {"error": retry_error}
+    return {"completion": completion, "pending_text_deltas": buffered_deltas}
 
 
 async def deterministic_fallback(state: ChatGraphState) -> dict[str, object]:
@@ -158,6 +204,13 @@ async def validate_output(state: ChatGraphState) -> dict[str, object]:
         parts.append(part)
     if any(getattr(part, "grounding", None) == "portfolio" for part in parts):
         parts.extend(citations_to_parts(state.get("citations", [])))
+    # A provider delta is only a preview. Emit it only after the final candidate
+    # has passed the complete server-side contract, then let the following final
+    # parts atomically replace that preview in the client.
+    callback = state.get("on_text_delta")
+    if callback:
+        for delta in state.get("pending_text_deltas", []):
+            callback(delta)
     return {"parts": parts, "usage": {"total_tokens": completion.total_tokens}}
 
 
