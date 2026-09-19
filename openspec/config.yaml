@@ -8,19 +8,66 @@ context: |
   Product: a public portfolio with an informational chat grounded in CV and project data.
   Runtime MCP is excluded unless a later requirement demonstrates a concrete need.
 
-strict_tdd: true
+strict_tdd: false
 
 testing:
-  detected_at: 2026-07-22
+  detected_at: 2026-09-18
   status: available
+  strict_tdd_reason: No single explicit workspace-level test command covers every in-scope project.
+  workspace_test_command: null
   runtime:
     node: 24.15.0
     npm: 11.12.1
     python: 3.13.14
+  projects:
+    - path: frontend
+      stack: Angular 22 / TypeScript / npm
+      test_runner: Angular unit-test builder backed by Vitest
+      test_command: npm run test:unit
+      scoped_test_command: npm test -- --include=<spec-path> --watch=false
+      test_layers:
+        unit: true
+        integration: false
+        e2e: configured-unproven
+      coverage:
+        available: false
+        command: null
+      quality:
+        linter:
+          available: false
+          command: null
+        type_checker:
+          available: true
+          command: npm run build
+        formatter:
+          available: true
+          command: null
+    - path: backend
+      stack: FastAPI / Pydantic / Python 3.13 / Poetry
+      test_runner: pytest
+      test_command: poetry run python -m pytest -q
+      scoped_test_command: poetry run python -m pytest <test-path> -q
+      test_layers:
+        unit: true
+        integration: true
+        e2e: false
+      coverage:
+        available: false
+        command: null
+      quality:
+        linter:
+          available: true
+          command: poetry run ruff check app tests --output-format=concise
+        type_checker:
+          available: true
+          command: poetry run mypy app
+        formatter:
+          available: false
+          command: null
   commands:
     frontend_unit_scoped:
       cwd: frontend
-      run: npm test -- --include=src/app/app.spec.ts --watch=false
+      run: npm test -- --include=<spec-path> --watch=false
     frontend_build:
       cwd: frontend
       run: npm run build
@@ -36,6 +83,10 @@ testing:
     backend_project_check:
       cwd: backend
       run: poetry check --lock
+  ci:
+    config: .github/workflows/ci.yml
+    status: separate-project-jobs
+    note: CI runs backend, frontend, and frontend-E2E jobs independently; it is not a workspace-level test command.
   e2e:
     package: "@playwright/test@1.61.1"
     config: frontend/playwright.config.ts
@@ -75,7 +126,7 @@ rules:
   apply:
     - Follow existing code patterns after scaffolding establishes them.
     - Do not add runtime MCP without an approved requirement and design rationale.
-    tdd: true
+    tdd: false
     test_command:
       frontend:
         cwd: frontend

@@ -2,6 +2,14 @@ import { Injectable } from '@angular/core';
 
 import { EXPECTED_CONTENT_VERSION } from './chat-compatibility';
 import { API_BASE_URL } from '../../core/config/api-base-url';
+import {
+  ContactDraft,
+  ContactSubmissionResponse,
+  InterviewContactFormPart,
+  normalizedContactPayload,
+  parseContactSubmissionResponse,
+  parseInterviewContactFormPart,
+} from './contact-form';
 
 export const CHAT_PROTOCOL_VERSION = '5';
 export type TextPart = {
@@ -10,7 +18,7 @@ export type TextPart = {
   grounding: 'general' | 'portfolio';
 };
 export type SourcePart = { type: 'source'; filename: string; page: number };
-export type ChatPart = TextPart | SourcePart;
+export type ChatPart = TextPart | SourcePart | InterviewContactFormPart;
 
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
@@ -62,6 +70,9 @@ export class ChatStreamError extends Error {
   constructor(
     readonly code: typeof INVALID_OUTPUT | typeof STREAM_CLOSED | 'content-incompatible',
     readonly retryable: boolean,
+    // Diagnostic only: which validation check tripped. Never shown in the UI;
+    // error.code stays the single source for user-facing mapping.
+    readonly detail?: string,
   ) {
     super(code);
   }
@@ -80,10 +91,10 @@ export function createChatState(): ChatState {
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   if (state.requestId && event.request_id !== state.requestId) {
-    throw invalid();
+    throw invalid('state-request-mismatch');
   }
   if (state.status === 'complete' || (state.terminalOutcome && event.type !== 'done')) {
-    throw invalid();
+    throw invalid('terminal-rules');
   }
 
   switch (event.type) {
@@ -111,7 +122,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         announcement: 'Se agregó una respuesta respaldada.',
       };
     case 'tool':
-      if (state.portfolioSearchUsed || state.parts.length) throw invalid();
+      if (state.portfolioSearchUsed || state.parts.length) throw invalid('state-tool-order');
       return {
         ...state,
         portfolioSearchUsed: true,
@@ -169,18 +180,20 @@ export function parseSseEvents(sse: string): ChatEvent[] {
   let terminalOutcomeSeen = false;
   let portfolioSearchSeen = false;
   let portfolioGroundingSeen = false;
-  for (const [index, event] of events.slice(1, -1).entries()) {
+  let validatedPartSeen = false;
+  for (const event of events.slice(1, -1)) {
     if (terminalOutcomeSeen || event.type === 'start' || event.type === 'done') throw invalid();
     if (event.type === 'text-delta') {
       if (portfolioGroundingSeen || terminalOutcomeSeen) throw invalid();
       continue;
     }
     if (event.type === 'tool') {
-      if (portfolioSearchSeen || index !== 0) throw invalid();
+      if (portfolioSearchSeen || validatedPartSeen) throw invalid();
       portfolioSearchSeen = true;
       continue;
     }
     if (event.type === 'part') {
+      validatedPartSeen = true;
       if (event.part.type === 'text' && event.part.grounding === 'portfolio') {
         if (!portfolioSearchSeen) throw invalid();
         portfolioGroundingSeen = true;
@@ -199,17 +212,28 @@ export function parseSseEvent(frame: string): ChatEvent {
     const data = fields.find((field) => field.startsWith('data: '))?.slice(6);
     if (!event || !data || fields.length !== 2) return invalid();
     const parsed = validateEvent(JSON.parse(data));
-    return parsed.type === event ? parsed : invalid();
-  } catch {
-    return invalid();
+    return parsed.type === event ? parsed : invalid('parse-type-mismatch');
+  } catch (error) {
+    // Preserve the inner check name so the next failure is self-identifying.
+    if (error instanceof ChatStreamError) throw error;
+    return invalid('parse');
   }
 }
 
-function invalid(): never {
-  throw new ChatStreamError(INVALID_OUTPUT, false);
+function invalid(detail?: string): never {
+  throw new ChatStreamError(INVALID_OUTPUT, false, detail);
 }
 function text(value: unknown): string {
-  return typeof value === 'string' && value.trim() && !HTML_TAG.test(value) ? value : invalid();
+  // Strict validator for final, server-owned fields. Unchanged on purpose.
+  return typeof value === 'string' && value.trim() && !HTML_TAG.test(value)
+    ? value
+    : invalid('text-validation');
+}
+function deltaText(value: unknown): string {
+  // Preview-only validator. The preview renders via interpolation (chat-page.ts),
+  // so Angular escapes it as text and HTML in a delta is inert, not dangerous.
+  // Whitespace-only deltas are accepted here and skipped silently in emit().
+  return typeof value === 'string' ? value : invalid('delta-text-validation');
 }
 function eventBase(value: Record<string, unknown>): EventBase {
   return typeof value['request_id'] === 'string' &&
@@ -237,6 +261,13 @@ function validatePart(value: unknown): ChatPart {
     return typeof part['page'] === 'number' && Number.isInteger(part['page']) && part['page'] > 0
       ? { type: 'source', filename: text(part['filename']), page: part['page'] }
       : invalid();
+  if (part['type'] === 'interview_contact_form') {
+    try {
+      return parseInterviewContactFormPart(part);
+    } catch {
+      return invalid('contact-form-validation');
+    }
+  }
   return invalid();
 }
 
@@ -253,7 +284,8 @@ function validateEvent(value: unknown): ChatEvent {
           content_version: text(raw['content_version']),
         }
       : invalid();
-  if (raw['type'] === 'text-delta') return { ...base, type: 'text-delta', text: text(raw['text']) };
+  if (raw['type'] === 'text-delta')
+    return { ...base, type: 'text-delta', text: deltaText(raw['text']) };
   if (raw['type'] === 'tool')
     return raw['tool'] === 'search_portfolio'
       ? { ...base, type: 'tool', tool: 'search_portfolio' }
@@ -295,6 +327,7 @@ function validateEvent(value: unknown): ChatEvent {
 @Injectable({ providedIn: 'root' })
 export class ChatClient {
   private readonly expectedContentVersion = EXPECTED_CONTENT_VERSION;
+  private contactFormSupported = false;
 
   async checkCompatibility(): Promise<boolean> {
     try {
@@ -303,7 +336,14 @@ export class ChatClient {
       const metadata = (await response.json()) as {
         content_version?: unknown;
         protocol_version?: unknown;
+        capabilities?: unknown;
       };
+      const capabilities = metadata.capabilities;
+      this.contactFormSupported =
+        !!capabilities &&
+        typeof capabilities === 'object' &&
+        (capabilities as Record<string, unknown>)['interview_contact_form'] === '1' &&
+        (capabilities as Record<string, unknown>)['contact_submission'] === '1';
       return (
         metadata.content_version === this.expectedContentVersion &&
         metadata.protocol_version === CHAT_PROTOCOL_VERSION
@@ -326,7 +366,14 @@ export class ChatClient {
       response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message, locale: 'es', client_request_id: clientRequestId }),
+        body: JSON.stringify({
+          message,
+          locale: 'es',
+          client_request_id: clientRequestId,
+          ...(this.contactFormSupported
+            ? { capabilities: { interview_contact_form: '1', contact_submission: '1' } }
+            : {}),
+        }),
         signal,
       });
     } catch {
@@ -366,6 +413,7 @@ export class ChatClient {
     let doneSeen = false;
     let portfolioSearchSeen = false;
     let portfolioGroundingSeen = false;
+    let validatedPartSeen = false;
     const emit = (event: ChatEvent): void => {
       if (
         (expectedSequence === 1) !== (event.type === 'start') ||
@@ -373,21 +421,36 @@ export class ChatClient {
         event.sequence !== expectedSequence ||
         (requestId && requestId !== event.request_id)
       )
-        return invalid();
-      if (terminalOutcomeSeen && event.type !== 'done') return invalid();
-      if (event.type === 'text-delta' && (portfolioGroundingSeen || terminalOutcomeSeen)) {
-        return invalid();
+        return invalid('emit-precondition');
+      if (terminalOutcomeSeen && event.type !== 'done') return invalid('terminal-rules');
+      if (event.type === 'text-delta' && portfolioGroundingSeen)
+        return invalid('delta-after-grounding');
+      // A whitespace-only delta carries no visible preview signal (the live
+      // model emits them between tokens). It still consumes exactly one valid
+      // protocol sequence before being hidden from the UI.
+      if (event.type === 'text-delta' && !event.text.trim()) {
+        expectedSequence += 1;
+        logChatLifecycle('chat.event_dropped', {
+          client_request_id: clientRequestId,
+          request_id: event.request_id,
+          event_type: event.type,
+          sequence: event.sequence,
+          detail: 'whitespace-preview-skipped',
+        });
+        return;
       }
       if (event.type === 'tool') {
-        if (portfolioSearchSeen || expectedSequence !== 2) return invalid();
+        if (portfolioSearchSeen || validatedPartSeen) return invalid('tool-order');
         portfolioSearchSeen = true;
       }
       if (event.type === 'part') {
+        validatedPartSeen = true;
         if (event.part.type === 'text' && event.part.grounding === 'portfolio') {
-          if (!portfolioSearchSeen) return invalid();
+          if (!portfolioSearchSeen) return invalid('part-without-tool');
           portfolioGroundingSeen = true;
         }
-        if (event.part.type === 'source' && !portfolioGroundingSeen) return invalid();
+        if (event.part.type === 'source' && !portfolioGroundingSeen)
+          return invalid('source-without-grounding');
       }
       if (
         (event.type === 'start' || event.type === 'done') &&
@@ -423,6 +486,7 @@ export class ChatClient {
           request_id: requestId,
           error_code: streamError.code,
           retryable: streamError.retryable,
+          ...(streamError.detail ? { error_detail: streamError.detail } : {}),
           elapsed_ms: Math.round(performance.now() - startedAt),
         });
         throw error;
@@ -464,9 +528,10 @@ export class ChatClient {
         request_id: requestId,
         error_code: INVALID_OUTPUT,
         retryable: false,
+        error_detail: 'pending-leftover',
         elapsed_ms: Math.round(performance.now() - startedAt),
       });
-      throw invalid();
+      throw invalid('pending-leftover');
     }
     if (!doneSeen) {
       logChatLifecycle('chat.request_error', {
@@ -484,5 +549,47 @@ export class ChatClient {
       terminal_outcome: terminalOutcomeSeen ? 'terminal-event' : 'done',
       elapsed_ms: Math.round(performance.now() - startedAt),
     });
+  }
+
+  async submitContact(
+    draft: ContactDraft,
+    idempotencyKey: string,
+  ): Promise<ContactSubmissionResponse> {
+    const startedAt = performance.now();
+    logChatLifecycle('contact.request_started', {});
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/v1/contact/submissions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey },
+        body: JSON.stringify(normalizedContactPayload(draft)),
+      });
+    } catch {
+      logChatLifecycle('contact.request_error', {
+        error_code: 'network-error',
+        retryable: true,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
+      throw new Error('contact-unavailable');
+    }
+    let result: ContactSubmissionResponse;
+    try {
+      result = parseContactSubmissionResponse(await response.json());
+    } catch {
+      logChatLifecycle('contact.request_error', {
+        status_code: response.status,
+        error_code: 'invalid-contact-response',
+        retryable: false,
+        elapsed_ms: Math.round(performance.now() - startedAt),
+      });
+      throw new Error('invalid-contact-response');
+    }
+    logChatLifecycle('contact.request_completed', {
+      status_code: response.status,
+      terminal_outcome: result.outcome,
+      retryable: result.retryable,
+      elapsed_ms: Math.round(performance.now() - startedAt),
+    });
+    return result;
   }
 }

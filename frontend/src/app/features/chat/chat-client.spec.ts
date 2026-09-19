@@ -100,6 +100,86 @@ describe('ChatClient SSE streaming', () => {
     expect(events[2]).toMatchObject({ type: 'part', part: { text: 'Hola' } });
   });
 
+  it('accepts a portfolio tool call after a preview delta', async () => {
+    const body = sse([
+      start,
+      { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Preview' },
+      { request_id: 'r-1', sequence: 3, type: 'tool', tool: 'search_portfolio' },
+      {
+        request_id: 'r-1',
+        sequence: 4,
+        type: 'part',
+        part: { type: 'text', grounding: 'portfolio', text: 'Grounded answer.' },
+      },
+      {
+        request_id: 'r-1',
+        sequence: 5,
+        type: 'part',
+        part: { type: 'source', filename: 'portfolio.pdf', page: 2 },
+      },
+      { ...done, sequence: 6 },
+    ]);
+    expect(parseSseEvents(body).map((event) => event.type)).toEqual([
+      'start',
+      'text-delta',
+      'tool',
+      'part',
+      'part',
+      'done',
+    ]);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => response(body);
+    try {
+      const events: ChatEvent[] = [];
+      await new ChatClient().stream('Portfolio question', (event) => events.push(event));
+
+      let state = createChatState();
+      for (const event of events) state = applyChatEvent(state, event);
+      expect(state.status).toBe('complete');
+      expect(state.portfolioSearchUsed).toBe(true);
+      expect(state.streamedText).toBe('');
+      expect(state.parts).toEqual([
+        { type: 'text', grounding: 'portfolio', text: 'Grounded answer.' },
+        { type: 'source', filename: 'portfolio.pdf', page: 2 },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('passes a backend error after deltas through with its message', async () => {
+    const backendMessage = 'El proveedor falló, intentá más tarde.';
+    const body = sse([
+      start,
+      { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Hola' },
+      {
+        request_id: 'r-1',
+        sequence: 3,
+        type: 'error',
+        code: 'provider-unavailable',
+        message: backendMessage,
+        retryable: true,
+      },
+      { ...done, sequence: 4 },
+    ]);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => response(body);
+    try {
+      const events: ChatEvent[] = [];
+      await new ChatClient().stream('Consulta', (event) => events.push(event));
+
+      expect(events.map((event) => event.type)).toEqual(['start', 'text-delta', 'error', 'done']);
+      let state = createChatState();
+      for (const event of events) state = applyChatEvent(state, event);
+      expect(state.status).toBe('error');
+      expect(state.announcement).toBe(backendMessage);
+      expect(state.retryable).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('rejects a second start frame after emitting the first', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () => response(sse([{ ...start }, { ...start, sequence: 2 }]));
@@ -201,6 +281,205 @@ describe('direct incremental SSE ordering', () => {
   });
 });
 
+describe('preview delta tolerance', () => {
+  it('skips ordered whitespace-only deltas without emitting them', async () => {
+    const body = sse([
+      start,
+      { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Hola' },
+      { request_id: 'r-1', sequence: 3, type: 'text-delta', text: '   ' },
+      { request_id: 'r-1', sequence: 4, type: 'text-delta', text: '\n' },
+      { request_id: 'r-1', sequence: 5, type: 'text-delta', text: 'mundo' },
+      {
+        request_id: 'r-1',
+        sequence: 6,
+        type: 'part',
+        part: { type: 'text', grounding: 'general', text: 'Hola mundo' },
+      },
+      { ...done, sequence: 7 },
+    ]);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => response(body);
+    try {
+      const events: ChatEvent[] = [];
+      await new ChatClient().stream('Consulta', (event) => events.push(event));
+
+      // Whitespace previews consume their exact sequence but never reach the UI.
+      expect(events.map((event) => event.sequence)).toEqual([1, 2, 5, 6, 7]);
+      let state = createChatState();
+      for (const event of events) state = applyChatEvent(state, event);
+      expect(state.status).toBe('complete');
+      expect(state.parts).toEqual([{ type: 'text', grounding: 'general', text: 'Hola mundo' }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects a sequence gap before suppressing a whitespace-only delta', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      response(
+        sse([
+          start,
+          { request_id: 'r-1', sequence: 3, type: 'text-delta', text: '   ' },
+          { ...done, sequence: 4 },
+        ]),
+      );
+    try {
+      await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+        code: 'invalid-provider-output',
+        detail: 'emit-precondition',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects preview deltas after portfolio grounding', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      response(
+        sse([
+          start,
+          { request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' },
+          {
+            request_id: 'r-1',
+            sequence: 3,
+            type: 'part',
+            part: { type: 'text', grounding: 'portfolio', text: 'Grounded answer.' },
+          },
+          { request_id: 'r-1', sequence: 4, type: 'text-delta', text: 'stale' },
+          { ...done, sequence: 5 },
+        ]),
+      );
+    try {
+      await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+        code: 'invalid-provider-output',
+        detail: 'delta-after-grounding',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects whitespace-only deltas after a terminal outcome', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      response(
+        sse([
+          start,
+          {
+            request_id: 'r-1',
+            sequence: 2,
+            type: 'error',
+            code: 'provider-unavailable',
+            message: 'Provider failed.',
+            retryable: true,
+          },
+          { request_id: 'r-1', sequence: 3, type: 'text-delta', text: '   ' },
+          { ...done, sequence: 4 },
+        ]),
+      );
+    try {
+      await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+        code: 'invalid-provider-output',
+        detail: 'terminal-rules',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('accepts HTML-containing preview deltas as inert text', async () => {
+    const body = sse([
+      start,
+      { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'a <b>tag</b> preview' },
+      {
+        request_id: 'r-1',
+        sequence: 3,
+        type: 'part',
+        part: { type: 'text', grounding: 'general', text: 'Respuesta final.' },
+      },
+      { ...done, sequence: 4 },
+    ]);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => response(body);
+    try {
+      const events: ChatEvent[] = [];
+      await new ChatClient().stream('Consulta', (event) => events.push(event));
+
+      expect(events.map((event) => event.type)).toEqual(['start', 'text-delta', 'part', 'done']);
+      // The preview renders via interpolation, so the markup stays inert text.
+      const delta = events[1];
+      expect(delta.type === 'text-delta' && delta.text).toBe('a <b>tag</b> preview');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps strict validation for final parts with HTML', async () => {
+    const body = sse([
+      start,
+      {
+        request_id: 'r-1',
+        sequence: 2,
+        type: 'part',
+        part: { type: 'text', grounding: 'general', text: 'a <b>tag</b> part' },
+      },
+      { ...done, sequence: 3 },
+    ]);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => response(body);
+    try {
+      await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+        code: 'invalid-provider-output',
+        detail: 'text-validation',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('names the tripped check on invalid errors', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => response(sse([{ ...start }, { ...start, sequence: 2 }]));
+    try {
+      await expect(new ChatClient().stream('Consulta', () => undefined)).rejects.toMatchObject({
+        code: 'invalid-provider-output',
+        detail: 'emit-precondition',
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('names delta validation failures without throwing for skippable previews', () => {
+    expect(() =>
+      parseSseEvents(
+        sse([
+          start,
+          { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 42 },
+          { ...done, sequence: 3 },
+        ]),
+      ),
+    ).toThrow('invalid-provider-output');
+    try {
+      parseSseEvents(
+        sse([
+          start,
+          { request_id: 'r-1', sequence: 2, type: 'text-delta', text: 42 },
+          { ...done, sequence: 3 },
+        ]),
+      );
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'invalid-provider-output',
+        detail: 'delta-text-validation',
+      });
+      return;
+    }
+    throw new Error('expected delta-text-validation to throw');
+  });
+});
 describe('chat observability', () => {
   it('records only metadata during an SSE stream', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -230,5 +509,116 @@ describe('chat observability', () => {
     expect(serialized).not.toContain(privateText);
     globalThis.fetch = originalFetch;
     info.mockRestore();
+  });
+});
+
+describe('contact form protocol', () => {
+  const formPart = {
+    type: 'interview_contact_form',
+    form_version: '1',
+    submission_version: '1',
+    intent: 'interview',
+    fields: ['name', 'email', 'company', 'message'],
+  };
+
+  it('accepts only the exact fixed form part', () => {
+    const events = parseSseEvents(
+      sse([
+        start,
+        { request_id: 'r-1', sequence: 2, type: 'part', part: formPart },
+        { ...done, sequence: 3 },
+      ]),
+    );
+    expect(events[1]).toMatchObject({ type: 'part', part: formPart });
+    for (const unsafe of [
+      { ...formPart, form_version: '2' },
+      { ...formPart, html: '<form></form>' },
+      { ...formPart, fields: ['email', 'name', 'company', 'message'] },
+    ]) {
+      expect(() =>
+        parseSseEvents(
+          sse([
+            start,
+            { request_id: 'r-1', sequence: 2, type: 'part', part: unsafe },
+            { ...done, sequence: 3 },
+          ]),
+        ),
+      ).toThrow('invalid-provider-output');
+    }
+  });
+
+  it('advertises negotiated capabilities and submits only declared values', async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    globalThis.fetch = async (url, init) => {
+      requests.push({ url: String(url), init });
+      if (!init)
+        return new Response(
+          JSON.stringify({
+            content_version: CONTENT_VERSION,
+            protocol_version: '5',
+            capabilities: { interview_contact_form: '1', contact_submission: '1' },
+          }),
+          { status: 200 },
+        );
+      if (String(url).endsWith('/chat/stream'))
+        return response(sse([start, { ...done, sequence: 2 }]));
+      return new Response(
+        JSON.stringify({ outcome: 'accepted', retryable: false, request_id: 'safe-id' }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    };
+    try {
+      const client = new ChatClient();
+      expect(await client.checkCompatibility()).toBe(true);
+      await client.stream('Interview', () => undefined);
+      await client.submitContact(
+        { name: 'Ada', email: 'ada@example.com', company: '', message: 'Interview' },
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
+      expect(JSON.parse(String(requests[1].init?.body))).toMatchObject({
+        capabilities: { interview_contact_form: '1', contact_submission: '1' },
+      });
+      expect(JSON.parse(String(requests[2].init?.body))).toEqual({
+        submission_version: '1',
+        name: 'Ada',
+        email: 'ada@example.com',
+        company: null,
+        message: 'Interview',
+      });
+      expect((requests[2].init?.headers as Record<string, string>)['idempotency-key']).toBe(
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps contact values out of lifecycle telemetry', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({ outcome: 'delivery_retryable', retryable: true, request_id: 'safe-id' }),
+        { status: 502, headers: { 'content-type': 'application/json' } },
+      );
+    try {
+      await new ChatClient().submitContact(
+        {
+          name: 'Private Name',
+          email: 'private@example.com',
+          company: 'Private Company',
+          message: 'Private message',
+        },
+        '550e8400-e29b-41d4-a716-446655440000',
+      );
+      const logs = JSON.stringify(info.mock.calls);
+      expect(logs).toContain('delivery_retryable');
+      expect(logs).not.toContain('Private');
+      expect(logs).not.toContain('private@example.com');
+    } finally {
+      globalThis.fetch = originalFetch;
+      info.mockRestore();
+    }
   });
 });

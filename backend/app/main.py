@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
 import time
+import uuid
 from collections.abc import AsyncGenerator, Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app.application.chat import (
@@ -24,6 +26,14 @@ from app.application.chat import (
     build_event_stream,
 )
 from app.application.chat_graph import ChatGraphState, run_chat_graph
+from app.application.contact import (
+    CONTACT_FORM_VERSION,
+    CONTACT_SUBMISSION_VERSION,
+    MAX_CONTACT_BODY_BYTES,
+    ContactSubmission,
+    ContactSubmissionResponse,
+    EphemeralSubmissionGuard,
+)
 from app.domain.content import load_content_bundle
 from app.infrastructure.chat_provider import (
     ChatProvider,
@@ -33,6 +43,7 @@ from app.infrastructure.chat_provider import (
     ProviderResult,
     ToolCall,
 )
+from app.infrastructure.contact_delivery import ContactDeliveryFailure, GmailSmtpContactDelivery
 from app.infrastructure.pdf_rag import ChromaPdfRetriever, OpenAIEmbedder, PdfRetriever
 
 APP_VERSION = "0.1.0"
@@ -66,6 +77,7 @@ class ChatRequest(BaseModel):
         max_length=128,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
     )
+    capabilities: dict[str, Literal["1"]] | None = None
 
 
 def _sse(events: list[dict[str, object]]) -> Iterator[bytes]:
@@ -155,6 +167,9 @@ def create_app(
     preview_origin_regex: str = DEFAULT_PREVIEW_ORIGIN_REGEX,
     ready: bool | None = None,
     debug: bool = False,
+    contact_enabled: bool = False,
+    contact_delivery: object | None = None,
+    contact_guard: EphemeralSubmissionGuard | None = None,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
@@ -171,7 +186,7 @@ def create_app(
         allow_origin_regex=preview_origin_regex,
         allow_credentials=False,
         allow_methods=["POST", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Idempotency-Key"],
     )
 
     @app.get("/health", tags=["system"])
@@ -189,12 +204,18 @@ def create_app(
     async def metadata():  # type: ignore[no-untyped-def]
         if not is_ready or retriever is None or provider is None:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
-        return {
+        payload: dict[str, object] = {
             "app_version": app_version,
             "content_version": compatibility_version,
             "model": provider_model,
             "protocol_version": CHAT_PROTOCOL_VERSION,
         }
+        if contact_enabled and contact_delivery is not None and contact_guard is not None:
+            payload["capabilities"] = {
+                "interview_contact_form": CONTACT_FORM_VERSION,
+                "contact_submission": CONTACT_SUBMISSION_VERSION,
+            }
+        return payload
 
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(request: ChatRequest):  # type: ignore[no-untyped-def]
@@ -259,6 +280,11 @@ def create_app(
             "message": request.message,
             "retriever": retriever,
             "invoke_model": invoke_model,
+            "contact_form_supported": bool(
+                contact_enabled
+                and request.capabilities
+                and request.capabilities.get("interview_contact_form") == CONTACT_FORM_VERSION
+            ),
         }
 
         async def response_generator() -> AsyncGenerator[bytes]:
@@ -484,6 +510,96 @@ def create_app(
             },
         )
 
+    @app.post("/api/v1/contact/submissions", tags=["contact"])
+    async def submit_contact(request: Request):  # type: ignore[no-untyped-def]
+        request_id = str(uuid.uuid4())
+
+        def response(
+            status: int,
+            outcome: str,
+            retryable: bool = False,
+            field_errors: dict[Literal["name", "email", "company", "message"], str] | None = None,
+        ) -> JSONResponse:
+            _chat_log(
+                "contact.request_completed",
+                request_id=request_id,
+                status_code=status,
+                outcome=outcome,
+                retryable=retryable,
+            )
+            body = ContactSubmissionResponse(
+                outcome=outcome,  # type: ignore[arg-type]
+                retryable=retryable,
+                request_id=request_id,
+                field_errors=field_errors,
+            )
+            return JSONResponse(status_code=status, content=body.model_dump(exclude_none=True))
+
+        if not request.headers.get("content-type", "").lower().startswith("application/json"):
+            return response(400, "validation_error")
+        raw = await request.body()
+        if len(raw) > MAX_CONTACT_BODY_BYTES:
+            return response(400, "validation_error")
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return response(400, "validation_error")
+        if (
+            isinstance(payload, dict)
+            and payload.get("submission_version") != CONTACT_SUBMISSION_VERSION
+        ):
+            return response(422, "unsupported_version")
+        try:
+            submission = ContactSubmission.model_validate(payload)
+        except ValidationError as error:
+            field_errors: dict[Literal["name", "email", "company", "message"], str] = {}
+            for item in error.errors(include_input=False):
+                if not item.get("loc"):
+                    continue
+                field = item["loc"][0]
+                if field in {"name", "email", "company", "message"}:
+                    field_errors[field] = str(item["type"])  # type: ignore[index]
+            return response(400, "validation_error", field_errors=field_errors or None)
+        key = request.headers.get("idempotency-key", "")
+        try:
+            parsed_key = uuid.UUID(key)
+            if parsed_key.version != 4 or str(parsed_key) != key.lower():
+                raise ValueError
+        except (ValueError, AttributeError):
+            return response(400, "validation_error")
+        if not contact_enabled or contact_delivery is None or contact_guard is None:
+            return response(503, "delivery_unavailable")
+        fingerprint = hashlib.sha256(raw).hexdigest()
+        client_identity = request.client.host if request.client else "unknown"
+        decision = contact_guard.reserve(client_identity, key, fingerprint)
+        decision_map = {
+            "duplicate_processing": (202, "duplicate_processing", True),
+            "duplicate_accepted": (200, "duplicate_accepted", False),
+            "delivery_uncertain": (503, "delivery_uncertain", False),
+            "idempotency_conflict": (409, "idempotency_conflict", False),
+            "throttled": (429, "throttled", True),
+        }
+        if decision != "reserved":
+            status, outcome, retryable = decision_map[decision]
+            return response(status, outcome, retryable)
+        try:
+            await run_in_threadpool(contact_delivery.deliver, submission)  # type: ignore[attr-defined]
+        except ContactDeliveryFailure as error:
+            if error.uncertain:
+                contact_guard.mark_uncertain(key)
+                return response(503, "delivery_uncertain")
+            contact_guard.release(key)
+            return response(
+                502,
+                "delivery_retryable" if error.retryable else "delivery_failed",
+                error.retryable,
+            )
+        except Exception:
+            contact_guard.release(key)
+            return response(503, "delivery_unavailable")
+        contact_guard.mark_accepted(key)
+        return response(200, "accepted")
+
     return app
 
 
@@ -510,6 +626,25 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         )
     except (KeyError, OSError, ValueError):
         return create_app(ready=False, debug=debug)
+    contact_enabled = os.getenv("CONTACT_FORM_ENABLED", "false").lower() == "true"
+    contact_delivery: GmailSmtpContactDelivery | None = None
+    contact_guard: EphemeralSubmissionGuard | None = None
+    if contact_enabled:
+        try:
+            contact_delivery = GmailSmtpContactDelivery(
+                os.environ["GMAIL_SMTP_EMAIL"],
+                os.environ["GMAIL_SMTP_APP_PASSWORD"],
+            )
+            contact_guard = EphemeralSubmissionGuard(
+                os.environ["CONTACT_HMAC_SECRET"],
+                ttl_seconds=int(os.getenv("CONTACT_IDEMPOTENCY_TTL_SECONDS", "900")),
+                rate_window_seconds=int(os.getenv("CONTACT_RATE_WINDOW_SECONDS", "600")),
+                rate_limit=int(os.getenv("CONTACT_RATE_LIMIT", "5")),
+                capacity=int(os.getenv("CONTACT_GUARD_CAPACITY", "2000")),
+            )
+        except (KeyError, ValueError):
+            contact_delivery = None
+            contact_guard = None
     return create_app(
         retriever=retriever,
         content_version=compatibility_version,
@@ -520,6 +655,9 @@ def _default_app(*, debug: bool = False) -> FastAPI:
             os.getenv("CORS_PREVIEW_ORIGIN_REGEX")
         ),
         debug=debug,
+        contact_enabled=contact_enabled,
+        contact_delivery=contact_delivery,
+        contact_guard=contact_guard,
     )
 
 

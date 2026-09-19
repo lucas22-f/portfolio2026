@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
+from app.application.contact import InterviewContactFormPart
 from app.infrastructure.pdf_rag import PdfCitation
 
 CHAT_PROTOCOL_VERSION: Literal["5"] = "5"
@@ -31,7 +32,7 @@ class SourcePart(BaseModel):
     page: int
 
 
-ValidatedPart = TextPart | SourcePart
+ValidatedPart = TextPart | SourcePart | InterviewContactFormPart
 _HTML_TAG = re.compile(r"<[a-zA-Z][^>]*>")
 
 

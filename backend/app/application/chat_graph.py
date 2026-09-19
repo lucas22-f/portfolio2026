@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, START, StateGraph
@@ -16,6 +16,7 @@ from app.application.chat import (
     citations_to_parts,
     validate_candidate,
 )
+from app.application.contact import InterviewContactFormPart, classify_contact_intent
 from app.domain.retrieval import SafetyOutcome, classify_safety
 from app.infrastructure.chat_provider import ProviderFailure, ProviderResult
 from app.infrastructure.pdf_rag import PdfCitation, PdfRetrievalError, PdfRetriever, PdfSearchResult
@@ -43,6 +44,8 @@ class ChatGraphState(TypedDict, total=False):
     pending_text_deltas: list[str]
     on_text_delta: Callable[[str], None]
     on_portfolio_search: Callable[[], None]
+    contact_intent: str | None
+    contact_form_supported: bool
 
 
 async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
@@ -54,7 +57,11 @@ async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
 
 async def validate_safety(state: ChatGraphState) -> dict[str, object]:
     outcome = classify_safety(state["message"])
-    return {"safety": outcome, "refusal": "unsafe" if outcome.classification == "unsafe" else None}
+    return {
+        "safety": outcome,
+        "refusal": "unsafe" if outcome.classification == "unsafe" else None,
+        "contact_intent": classify_contact_intent(state["message"]),
+    }
 
 
 def after_safety(state: ChatGraphState) -> str:
@@ -68,7 +75,13 @@ async def initial_answer(state: ChatGraphState) -> dict[str, object]:
             # a general answer or must be grounded in the PDF.  A portfolio claim
             # without a tool call is correctly rejected later, but used to leak a
             # partial preview before that rejection.
-            state, state["message"], None, None, 0, 0, None
+            state,
+            state["message"],
+            None,
+            None,
+            0,
+            0,
+            None,
         )
     except (ProviderFailure, CandidateValidationError) as error:
         return {"error": error}
@@ -204,6 +217,13 @@ async def validate_output(state: ChatGraphState) -> dict[str, object]:
         parts.append(part)
     if any(getattr(part, "grounding", None) == "portfolio" for part in parts):
         parts.extend(citations_to_parts(state.get("citations", [])))
+    intent = state.get("contact_intent")
+    if state.get("contact_form_supported") and intent in {
+        "employment",
+        "interview",
+        "recruiting",
+    }:
+        parts.append(InterviewContactFormPart(intent=cast(Any, intent)))
     # A provider delta is only a preview. Emit it only after the final candidate
     # has passed the complete server-side contract, then let the following final
     # parts atomically replace that preview in the client.

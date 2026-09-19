@@ -17,16 +17,20 @@ describe('ChatPage', () => {
     expect(document.activeElement).toBe(
       fixture.nativeElement.querySelector('[data-testid="chat-heading"]'),
     );
-    expect(fixture.nativeElement.querySelector('[data-testid="chat-heading"]')?.tagName).toBe(
-      'H3',
-    );
+    expect(fixture.nativeElement.querySelector('[data-testid="chat-heading"]')?.tagName).toBe('H3');
   });
 
   it('announces a Spanish grounded response and renders only its text part', async () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
         onEvent({
           request_id: 'r-1',
           sequence: 2,
@@ -37,7 +41,13 @@ describe('ChatPage', () => {
             text: 'Respuesta respaldada.',
           },
         });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 3,
+          type: 'done',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
       },
     };
     await TestBed.configureTestingModule({
@@ -64,14 +74,39 @@ describe('ChatPage', () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
         onEvent({ request_id: 'r-1', sequence: 2, type: 'tool', tool: 'search_portfolio' });
-        onEvent({ request_id: 'r-1', sequence: 3, type: 'part', part: { type: 'text', grounding: 'portfolio', text: 'Respuesta respaldada.' } });
-        onEvent({ request_id: 'r-1', sequence: 4, type: 'part', part: { type: 'source', filename: 'CV.pdf', page: 3 } });
-        onEvent({ request_id: 'r-1', sequence: 5, type: 'done', protocol_version: '5', content_version: 'v1' });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 3,
+          type: 'part',
+          part: { type: 'text', grounding: 'portfolio', text: 'Respuesta respaldada.' },
+        });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 4,
+          type: 'part',
+          part: { type: 'source', filename: 'CV.pdf', page: 3 },
+        });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 5,
+          type: 'done',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
       },
     };
-    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
     fixture.componentInstance.message = 'Consulta';
 
@@ -79,12 +114,15 @@ describe('ChatPage', () => {
     fixture.detectChanges();
 
     const page = fixture.nativeElement as HTMLElement;
-    expect(page.querySelector('[data-testid="assistant-activity"]')?.textContent)
-      .toContain('Respuesta completada con información del portfolio');
-    expect(page.querySelector('[data-testid="chat-sources"]')?.textContent)
-      .toContain('Fuentes consultadas');
-    expect(page.querySelector('[data-testid="chat-sources"]')?.textContent)
-      .toContain('CV.pdf, página 3');
+    expect(page.querySelector('[data-testid="assistant-activity"]')?.textContent).toContain(
+      'Respuesta completada con información del portfolio',
+    );
+    expect(page.querySelector('[data-testid="chat-sources"]')?.textContent).toContain(
+      'Fuentes consultadas',
+    );
+    expect(page.querySelector('[data-testid="chat-sources"]')?.textContent).toContain(
+      'CV.pdf, página 3',
+    );
     expect(page.textContent).not.toContain('Fuente:');
   });
 
@@ -96,12 +134,32 @@ describe('ChatPage', () => {
         call += 1;
         const requestId = `r-${call}`;
         const response = call === 1 ? 'Primera respuesta.' : 'Segunda respuesta.';
-        onEvent({ request_id: requestId, sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
-        onEvent({ request_id: requestId, sequence: 2, type: 'part', part: { type: 'text', grounding: 'general', text: response } });
-        onEvent({ request_id: requestId, sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+        onEvent({
+          request_id: requestId,
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+        onEvent({
+          request_id: requestId,
+          sequence: 2,
+          type: 'part',
+          part: { type: 'text', grounding: 'general', text: response },
+        });
+        onEvent({
+          request_id: requestId,
+          sequence: 3,
+          type: 'done',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
       },
     };
-    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
     fixture.componentInstance.message = 'Primera consulta.';
     await fixture.componentInstance.submit();
@@ -109,21 +167,38 @@ describe('ChatPage', () => {
     await fixture.componentInstance.submit();
     fixture.detectChanges();
 
-    const transcript = fixture.nativeElement.querySelector('[data-testid="chat-transcript"]')?.textContent ?? '';
-    expect(transcript.indexOf('Primera consulta.')).toBeLessThan(transcript.indexOf('Primera respuesta.'));
-    expect(transcript.indexOf('Primera respuesta.')).toBeLessThan(transcript.indexOf('Segunda consulta.'));
-    expect(transcript.indexOf('Segunda consulta.')).toBeLessThan(transcript.indexOf('Segunda respuesta.'));
+    const transcript =
+      fixture.nativeElement.querySelector('[data-testid="chat-transcript"]')?.textContent ?? '';
+    expect(transcript.indexOf('Primera consulta.')).toBeLessThan(
+      transcript.indexOf('Primera respuesta.'),
+    );
+    expect(transcript.indexOf('Primera respuesta.')).toBeLessThan(
+      transcript.indexOf('Segunda consulta.'),
+    );
+    expect(transcript.indexOf('Segunda consulta.')).toBeLessThan(
+      transcript.indexOf('Segunda respuesta.'),
+    );
     expect(transcript.match(/Primera consulta\./g)).toHaveLength(1);
     expect(transcript.match(/Segunda consulta\./g)).toHaveLength(1);
   });
 
   it('derives only safe lifecycle labels from validated chat state', async () => {
     const client = { checkCompatibility: async () => true, stream: async () => undefined };
-    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
-    const state = (overrides: Partial<ReturnType<typeof fixture.componentInstance.state>>) => fixture.componentInstance.state.set({
-      status: 'streaming', parts: [], announcement: '', retryable: false, portfolioSearchUsed: false, streamedText: '', ...overrides,
-    });
+    const state = (overrides: Partial<ReturnType<typeof fixture.componentInstance.state>>) =>
+      fixture.componentInstance.state.set({
+        status: 'streaming',
+        parts: [],
+        announcement: '',
+        retryable: false,
+        portfolioSearchUsed: false,
+        streamedText: '',
+        ...overrides,
+      });
 
     state({});
     expect(fixture.componentInstance.activityLabel()).toBe('Preparando respuesta');
@@ -141,8 +216,19 @@ describe('ChatPage', () => {
     const client = {
       checkCompatibility: async () => true,
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
-        onEvent({ request_id: 'r-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
-        onEvent({ request_id: 'r-1', sequence: 2, type: 'text-delta', text: 'Vista previa sin validar.' });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+        onEvent({
+          request_id: 'r-1',
+          sequence: 2,
+          type: 'text-delta',
+          text: 'Vista previa sin validar.',
+        });
         throw Object.assign(new Error('invalid-provider-output'), {
           code: 'invalid-provider-output',
           retryable: false,
@@ -235,7 +321,9 @@ describe('ChatPage', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
     let returnCount = 0;
-    fixture.componentInstance.returnToIntro.subscribe(() => { returnCount += 1; });
+    fixture.componentInstance.returnToIntro.subscribe(() => {
+      returnCount += 1;
+    });
     fixture.detectChanges();
 
     const action = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
@@ -261,12 +349,68 @@ describe('ChatPage', () => {
     expect(page.querySelector('[data-testid="chat-viewport"]')).not.toBeNull();
     expect(page.querySelector('[data-testid="chat-transcript"]')).not.toBeNull();
     expect(page.querySelector('[data-testid="chat-composer"]')).not.toBeNull();
-    expect(page.querySelector('[data-testid="chat-viewport"]')?.classList.contains('min-h-svh')).toBe(
-      true,
+    expect(
+      page.querySelector('[data-testid="chat-viewport"]')?.classList.contains('min-h-svh'),
+    ).toBe(true);
+    expect(
+      page.querySelector('[data-testid="chat-transcript"]')?.classList.contains('overflow-y-auto'),
+    ).toBe(true);
+  });
+
+  it('places a closed contact suggestion after completed response text without stealing focus', async () => {
+    const client = {
+      checkCompatibility: async () => true,
+      submitContact: async () => ({ outcome: 'accepted', retryable: false, request_id: 'safe-id' }),
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        onEvent({
+          request_id: 'contact-1',
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+        onEvent({
+          request_id: 'contact-1',
+          sequence: 2,
+          type: 'part',
+          part: { type: 'text', grounding: 'general', text: 'Podemos conversar.' },
+        });
+        onEvent({
+          request_id: 'contact-1',
+          sequence: 3,
+          type: 'part',
+          part: {
+            type: 'interview_contact_form',
+            form_version: '1',
+            submission_version: '1',
+            intent: 'interview',
+            fields: ['name', 'email', 'company', 'message'],
+          },
+        });
+        onEvent({
+          request_id: 'contact-1',
+          sequence: 4,
+          type: 'done',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+      },
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.componentInstance.message = 'Quiero una entrevista.';
+    await fixture.componentInstance.submit();
+    fixture.detectChanges();
+    const transcript = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="chat-transcript"]',
+    )!;
+    expect(transcript.textContent!.indexOf('Podemos conversar.')).toBeLessThan(
+      transcript.textContent!.indexOf('Abrir formulario'),
     );
-    expect(page.querySelector('[data-testid="chat-transcript"]')?.classList.contains('overflow-y-auto')).toBe(
-      true,
-    );
+    expect(transcript.querySelector('app-interview-contact-form form')).toBeNull();
+    expect(document.activeElement?.textContent).not.toContain('Enviar una consulta a Lucas');
   });
 });
-

@@ -1,0 +1,83 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+.contact-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1rem;
+}
+.contact-suggestion,
+.contact-form {
+  display: grid;
+  gap: 1rem;
+}
+.eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+h4,
+p {
+  margin: 0;
+}
+h4 {
+  color: var(--color-heading);
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+.fields {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.optional,
+.consent {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+.actions,
+.draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+.actions button,
+.draft-actions button {
+  min-height: 44px;
+}
+.draft-actions {
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+}
+.status-card {
+  outline: none;
+}
+:where(input, textarea, button, [tabindex='-1']):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (min-width: 40rem) {
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fields > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 30rem) {
+  .actions {
+    display: grid;
+  }
+  .actions button {
+    width: 100%;
+  }
+}

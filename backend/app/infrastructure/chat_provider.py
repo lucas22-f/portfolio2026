@@ -12,16 +12,25 @@ from urllib.request import Request, urlopen
 
 Candidate = dict[str, object]
 
+_CONCISE_RESPONSE_GUIDANCE = (
+    "Preferí respuestas breves y fáciles de escanear: normalmente, usá de 2 a 4 "
+    "oraciones y, como máximo, dos párrafos breves. Extendete solo cuando la pregunta "
+    "realmente lo requiera. Evitá introducciones, repeticiones y listas largas."
+)
 _CHAT_INSTRUCTIONS = (
     "Respondé en español. Podés conversar de forma general sin atribuir datos al "
     "portfolio. Si la persona pregunta por Lucas, su experiencia, formación, "
     "habilidades o proyectos, usá exclusivamente la herramienta search_portfolio "
-    "antes de responder. No inventes datos ni referencias."
+    "antes de responder. No inventes datos ni referencias. Devolvé la respuesta completa "
+    "como UNA sola parte de texto con grounding general; si tiene varias oraciones, "
+    "incluilas dentro del campo text de esa única parte. " + _CONCISE_RESPONSE_GUIDANCE
 )
 _GROUNDED_SPANISH_INSTRUCTIONS = (
     "Respondé en español. Usá únicamente la evidencia provista en la entrada; "
-    "no inventes datos ni referencias. Devolvé solamente partes de texto que "
-    "cumplan el esquema solicitado. Las citas de archivo y página las agrega el servidor."
+    "no inventes datos ni referencias. Devolvé la respuesta completa como UNA sola parte "
+    "de texto con grounding portfolio; si tiene varias oraciones, incluilas dentro del "
+    "campo text de esa única parte. Las citas de archivo y página las agrega el servidor. "
+    + _CONCISE_RESPONSE_GUIDANCE
 )
 
 _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
@@ -29,6 +38,8 @@ _CANDIDATE_PARTS_SCHEMA: dict[str, object] = {
     "properties": {
         "parts": {
             "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
             "items": {
                 "anyOf": [
                     {
@@ -624,11 +635,34 @@ class OpenAIChatProvider(ChatProvider):
                     diagnostic_category="invalid-structured-parts-shape",
                 )
             candidates = structured_output["parts"]
-            if not all(isinstance(item, dict) for item in candidates):
+            if len(candidates) != 1 or not isinstance(candidates[0], dict):
                 raise ProviderFailure(
                     "invalid-provider-output",
                     retryable=False,
-                    diagnostic_category="invalid-structured-parts-shape",
+                    diagnostic_category="invalid-structured-parts-count",
+                )
+            candidate = candidates[0]
+            if (
+                set(candidate) != {"type", "text", "grounding"}
+                or candidate.get("type") != "text"
+                or not isinstance(candidate.get("text"), str)
+                or not candidate["text"].strip()
+            ):
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category="invalid-structured-text-part",
+                )
+            expected_grounding = "portfolio" if expect_tool_result else "general"
+            if candidate.get("grounding") != expected_grounding:
+                raise ProviderFailure(
+                    "invalid-provider-output",
+                    retryable=False,
+                    diagnostic_category=(
+                        "grounded-candidate-not-portfolio"
+                        if expect_tool_result
+                        else "direct-candidate-not-general"
+                    ),
                 )
             return ProviderResult(
                 candidates,
