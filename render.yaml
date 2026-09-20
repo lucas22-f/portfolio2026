@@ -1,0 +1,27 @@
+# Render Blueprint for the production FastAPI service.
+# Use the Render dashboard to supply every `sync: false` secret.
+services:
+  - type: web
+    runtime: docker
+    name: portfolio-lucas-api
+    plan: starter
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    disk:
+      name: chroma-data
+      mountPath: /data/chroma
+      sizeGB: 1
+    envVars:
+      - key: PDF_RAG_PERSIST_DIRECTORY
+        value: /data/chroma
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CORS_PREVIEW_ORIGIN_REGEX
+        sync: false
+      - key: CONTACT_FORM_ENABLED
+        value: "false"
+      - key: CONTACT_HMAC_SECRET
+        generateValue: true
