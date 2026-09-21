@@ -13,6 +13,7 @@ import {
 import { FormsModule } from '@angular/forms';
 
 import { HlmButtonImports } from '@spartan-ng/helm/button';
+import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import {
   ChatClient,
@@ -26,16 +27,24 @@ import { InterviewContactFormComponent } from './interview-contact-form';
 
 type ChatTurn = { message: string; state: ChatState };
 
+const COMPATIBILITY_RETRY_DELAY_MS = 10_000;
+const COMPATIBILITY_MAX_ATTEMPTS = 6;
+
 @Component({
   selector: 'app-chat-page',
-  imports: [FormsModule, HlmButtonImports, InterviewContactFormComponent],
+  imports: [FormsModule, HlmButtonImports, HlmSpinnerImports, InterviewContactFormComponent],
   template: `
     <section
       data-testid="chat-viewport"
       class="min-h-svh bg-[var(--color-bg)]"
       aria-labelledby="chat-heading"
     >
-      <div class="mx-auto grid w-full max-w-4xl px-4 sm:px-8">
+      <div
+        class="mx-auto grid w-full max-w-4xl px-4 sm:px-8"
+        [class.blur-sm]="compatibilityPending()"
+        [attr.aria-hidden]="compatibilityPending() ? 'true' : null"
+        [attr.inert]="compatibilityPending() ? '' : null"
+      >
         <header class="border-b border-border py-5 sm:py-6">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">
             Consulta guiada
@@ -151,7 +160,12 @@ type ChatTurn = { message: string; state: ChatState };
                 <span>{{ activityLabel() }}</span>
               </aside>
             }
-            @if (!state().parts.length && state().status === 'idle' && compatible() !== false) {
+            @if (
+              !state().parts.length &&
+              state().status === 'idle' &&
+              compatible() === true &&
+              !compatibilityPending()
+            ) {
               <p class="m-0 max-w-xl text-lg leading-relaxed text-muted-foreground">
                 Escribí una consulta para iniciar la conversación.
               </p>
@@ -242,8 +256,8 @@ type ChatTurn = { message: string; state: ChatState };
               class="chat-composer-input min-h-24 w-full resize-none bg-transparent px-1 text-[var(--color-text)] outline-none placeholder:text-muted-foreground"
               placeholder="Escribí tu consulta…"
               [(ngModel)]="message"
-              [disabled]="state().status === 'streaming' || compatible() === false"
-              [attr.disabled]="compatible() === false ? '' : null"
+              [disabled]="state().status === 'streaming' || compatible() !== true"
+              [attr.disabled]="compatible() !== true ? '' : null"
               rows="3"
               required
             ></textarea>
@@ -256,6 +270,7 @@ type ChatTurn = { message: string; state: ChatState };
                   class="min-h-11 shrink-0"
                   data-testid="reset-journey"
                   type="button"
+                  [disabled]="compatibilityPending()"
                   (click)="returnToIntro.emit()"
                 >
                   Volver al inicio</button
@@ -264,7 +279,7 @@ type ChatTurn = { message: string; state: ChatState };
                   class="min-h-11 shrink-0"
                   type="submit"
                   [disabled]="
-                    !message.trim() || state().status === 'streaming' || compatible() === false
+                    !message.trim() || state().status === 'streaming' || compatible() !== true
                   "
                 >
                   {{ state().status === 'streaming' ? 'Consultando…' : 'Enviar consulta' }}
@@ -274,6 +289,38 @@ type ChatTurn = { message: string; state: ChatState };
           </div>
         </form>
       </div>
+      @if (compatibilityPending()) {
+        <section
+          #compatibilityGate
+          data-testid="compatibility-gate"
+          class="fixed inset-0 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="compatibility-gate-title"
+          aria-describedby="compatibility-gate-description"
+          tabindex="-1"
+        >
+          <div
+            class="grid w-full max-w-sm gap-4 rounded-xl border border-border bg-card p-5 shadow-sm"
+          >
+            <div class="flex items-start gap-3">
+              <hlm-spinner aria-label="El servicio se está iniciando" />
+              <div class="grid gap-2">
+                <h4 id="compatibility-gate-title" class="m-0 text-lg font-semibold text-foreground">
+                  El servicio se está iniciando
+                </h4>
+                <p
+                  id="compatibility-gate-description"
+                  class="m-0 text-sm leading-relaxed text-muted-foreground"
+                >
+                  Puede demorar alrededor de un minuto después de un período sin actividad. Esperá
+                  un momento mientras verificamos la disponibilidad.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      }
     </section>
   `,
   styleUrl: './chat-page.css',
@@ -285,13 +332,18 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   private readonly client = inject(ChatClient);
   private readonly heading = viewChild.required<ElementRef<HTMLElement>>('heading');
   private readonly transcriptRef = viewChild<ElementRef<HTMLElement>>('transcript');
+  private readonly compatibilityGate = viewChild<ElementRef<HTMLElement>>('compatibilityGate');
   readonly state = signal<ChatState>(createChatState());
   readonly completedTurns = signal<ChatTurn[]>([]);
   readonly compatible = signal<boolean | undefined>(undefined);
+  readonly compatibilityPending = signal(true);
   message = '';
   activeMessage = '';
   private lastMessage = '';
   private activeRequest?: AbortController;
+  private compatibilityRetryTimer?: ReturnType<typeof setTimeout>;
+  private compatibilityAttempt = 0;
+  private destroyed = false;
   private stickToBottom = true;
 
   activityLabel(): string | undefined {
@@ -324,11 +376,16 @@ export class ChatPage implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     if (this.focusOnEntry) this.focusEntry();
+    this.compatibilityGate()?.nativeElement.focus();
     void this.loadCompatibility();
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.activeRequest?.abort();
+    if (this.compatibilityRetryTimer !== undefined) {
+      clearTimeout(this.compatibilityRetryTimer);
+    }
   }
 
   focusEntry(): void {
@@ -362,7 +419,25 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   }
 
   private async loadCompatibility(): Promise<void> {
-    this.compatible.set(await this.client.checkCompatibility());
+    this.compatibilityAttempt += 1;
+    const result = await this.client.checkCompatibility();
+    if (this.destroyed) return;
+    if (result !== 'transient') {
+      this.compatible.set(result === 'compatible');
+      this.compatibilityPending.set(false);
+      this.restoreFocusAfterCompatibility();
+      return;
+    }
+    if (this.compatibilityAttempt >= COMPATIBILITY_MAX_ATTEMPTS) {
+      this.compatible.set(false);
+      this.compatibilityPending.set(false);
+      this.restoreFocusAfterCompatibility();
+      return;
+    }
+    this.compatibilityRetryTimer = setTimeout(
+      () => void this.loadCompatibility(),
+      COMPATIBILITY_RETRY_DELAY_MS,
+    );
   }
 
   async submit(retrying = false): Promise<void> {
@@ -370,7 +445,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
     const controller = new AbortController();
     this.activeRequest = controller;
     this.lastMessage = this.message.trim();
-    if (!this.lastMessage || this.compatible() === false) return;
+    if (!this.lastMessage || this.compatibilityPending() || this.compatible() !== true) return;
     if (!retrying && this.activeMessage) {
       this.completedTurns.update((turns) => [
         ...turns,
@@ -430,5 +505,11 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   retry(): Promise<void> {
     this.message = this.lastMessage;
     return this.submit(true);
+  }
+
+  private restoreFocusAfterCompatibility(): void {
+    queueMicrotask(() => {
+      if (!this.destroyed) this.focusEntry();
+    });
   }
 }

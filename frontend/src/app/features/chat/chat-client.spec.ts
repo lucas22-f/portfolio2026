@@ -570,7 +570,7 @@ describe('contact form protocol', () => {
     };
     try {
       const client = new ChatClient();
-      expect(await client.checkCompatibility()).toBe(true);
+      expect(await client.checkCompatibility()).toBe('compatible');
       await client.stream('Interview', () => undefined);
       await client.submitContact(
         { name: 'Ada', email: 'ada@example.com', company: '', message: 'Interview' },
@@ -589,6 +589,28 @@ describe('contact form protocol', () => {
       expect((requests[2].init?.headers as Record<string, string>)['idempotency-key']).toBe(
         '550e8400-e29b-41d4-a716-446655440000',
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('classifies transient availability failures separately from incompatible metadata', async () => {
+    const originalFetch = globalThis.fetch;
+    const client = new ChatClient();
+    try {
+      globalThis.fetch = async () => new Response('', { status: 503 });
+      expect(await client.checkCompatibility()).toBe('transient');
+
+      globalThis.fetch = async () =>
+        new Response(JSON.stringify({ content_version: 'stale', protocol_version: '5' }), {
+          status: 200,
+        });
+      expect(await client.checkCompatibility()).toBe('incompatible');
+
+      globalThis.fetch = async () => {
+        throw new Error('offline');
+      };
+      expect(await client.checkCompatibility()).toBe('transient');
     } finally {
       globalThis.fetch = originalFetch;
     }

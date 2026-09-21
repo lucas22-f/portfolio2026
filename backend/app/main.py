@@ -43,8 +43,13 @@ from app.infrastructure.chat_provider import (
     ProviderResult,
     ToolCall,
 )
-from app.infrastructure.contact_delivery import ContactDeliveryFailure, GmailSmtpContactDelivery
-from app.infrastructure.pdf_rag import ChromaPdfRetriever, OpenAIEmbedder, PdfRetriever
+from app.infrastructure.contact_delivery import BrevoContactDelivery, ContactDeliveryFailure
+from app.infrastructure.pdf_rag import (
+    OpenAIEmbedder,
+    PdfRetrievalError,
+    PdfRetriever,
+    SupabasePdfRetriever,
+)
 
 APP_VERSION = "0.1.0"
 DEFAULT_ORIGINS = ("http://localhost:4200", "https://portfolio2026.vercel.app")
@@ -175,7 +180,7 @@ def create_app(
 
     is_ready = ready if ready is not None else retriever is not None and provider is not None
     # This is the reviewed static-portfolio compatibility version consumed by the frontend.
-    # It deliberately differs from the PDF hash used only to decide whether Chroma must rebuild.
+    # It deliberately differs from the PDF hash used only to identify the seeded PDF version.
     compatibility_version = content_version or (
         retriever.content_version if retriever else "unavailable"
     )
@@ -612,28 +617,23 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         compatibility_version = load_content_bundle(content_root).portfolio.content_version
         limits = ProviderLimits(model=os.getenv("OPENAI_MODEL", "gpt-5-mini"))
         provider = OpenAIChatProvider(api_key=api_key, limits=limits)
-        retriever = ChromaPdfRetriever(
-            Path(
-                os.getenv(
-                    "PDF_RAG_PDF_PATH",
-                    str(Path(__file__).resolve().parent / "docs" / "CV_Lucas_Figueroa_1.pdf"),
-                )
-            ),
-            Path(os.getenv("PDF_RAG_PERSIST_DIRECTORY", "/data/chroma")),
-            OpenAIEmbedder(
-                api_key, model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-            ),
+        embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        retriever = SupabasePdfRetriever(
+            os.environ["SUPABASE_DB_URL"],
+            OpenAIEmbedder(api_key, model=embedding_model),
+            embedding_model=embedding_model,
         )
-    except (KeyError, OSError, ValueError):
+    except (KeyError, OSError, ValueError, PdfRetrievalError):
         return create_app(ready=False, debug=debug)
     contact_enabled = os.getenv("CONTACT_FORM_ENABLED", "false").lower() == "true"
-    contact_delivery: GmailSmtpContactDelivery | None = None
+    contact_delivery: BrevoContactDelivery | None = None
     contact_guard: EphemeralSubmissionGuard | None = None
     if contact_enabled:
         try:
-            contact_delivery = GmailSmtpContactDelivery(
-                os.environ["GMAIL_SMTP_EMAIL"],
-                os.environ["GMAIL_SMTP_APP_PASSWORD"],
+            contact_delivery = BrevoContactDelivery(
+                os.environ["BREVO_API_KEY"],
+                os.environ["BREVO_SENDER_EMAIL"],
+                os.environ["BREVO_RECIPIENT_EMAIL"],
             )
             contact_guard = EphemeralSubmissionGuard(
                 os.environ["CONTACT_HMAC_SECRET"],

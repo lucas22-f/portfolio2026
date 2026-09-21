@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.infrastructure.chat_provider import FakeProvider
-from app.main import create_app
+from app.main import _default_app, create_app
 
 
 class FakeRetriever:
@@ -28,3 +28,13 @@ def test_health_reports_initialized_application_versions() -> None:
         "app_version": "health-test",
         "content_version": "static-content-version",
     }
+
+
+def test_missing_supabase_configuration_makes_default_app_unavailable(monkeypatch) -> None:
+    monkeypatch.delenv("SUPABASE_DB_URL", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    client = TestClient(_default_app())
+
+    assert client.get("/health").status_code == 503
+    assert client.get("/api/v1/metadata").status_code == 503

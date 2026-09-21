@@ -1,18 +1,18 @@
-"""Minimal persisted PDF retrieval: PyMuPDF chunks, OpenAI embeddings and Chroma."""
+"""PDF extraction, OpenAI embeddings, and Supabase pgvector retrieval."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import chromadb
 import fitz  # type: ignore[import-untyped]
+import psycopg
 
 
 class PdfRetrievalError(RuntimeError):
@@ -87,6 +87,10 @@ class OpenAIEmbedder:
             raise ValueError("embedding configuration is invalid")
         self._api_key, self._model, self._timeout_seconds = api_key, model, timeout_seconds
 
+    @property
+    def model(self) -> str:
+        return self._model
+
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -120,88 +124,105 @@ class OpenAIEmbedder:
         return vectors
 
 
-class ChromaPdfRetriever:
-    """Initialize one persisted collection; query it without rebuilding it."""
+class SupabasePdfRetriever:
+    """Query the active, manually seeded Supabase PDF version without mutating it."""
+
+    _DIMENSIONS = 1536
 
     def __init__(
         self,
-        pdf_path: Path,
-        persist_directory: Path,
+        database_url: str,
         embedder: Embedder,
         *,
-        collection_name: str = "portfolio_pdf",
-        chunk_size: int = 900,
-        chunk_overlap: int = 150,
+        embedding_model: str = "text-embedding-3-small",
         max_relevant_distance: float = 1.25,
+        connect: Callable[..., Any] = psycopg.connect,
     ) -> None:
-        self._pdf_path, self._embedder, self._max_relevant_distance = (
-            pdf_path,
-            embedder,
-            max_relevant_distance,
-        )
-        self.content_version = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
-        persist_directory.mkdir(parents=True, exist_ok=True)
-        self._client = chromadb.PersistentClient(path=str(persist_directory))
-        try:
-            self._collection = self._client.get_collection(name=collection_name)
-        except chromadb.errors.NotFoundError:
-            self._collection = self._client.create_collection(
-                name=collection_name, metadata={"hnsw:space": "cosine"}
-            )
-        current_version = (
-            self._collection.metadata.get("pdf_sha256") if self._collection.metadata else None
-        )
-        if current_version != self.content_version:
-            self._rebuild(chunk_size, chunk_overlap)
+        if (
+            not database_url.strip()
+            or embedding_model != "text-embedding-3-small"
+            or max_relevant_distance <= 0
+        ):
+            raise ValueError("Supabase PDF retrieval configuration is invalid")
+        self._database_url = database_url
+        self._embedder = embedder
+        self._embedding_model = embedding_model
+        self._max_relevant_distance = max_relevant_distance
+        self._connect = connect
+        self.content_version = self._load_active_version()
 
-    def _rebuild(self, chunk_size: int, chunk_overlap: int) -> None:
-        existing = self._collection.get(include=[])
-        ids = existing.get("ids", [])
-        if ids:
-            self._collection.delete(ids=ids)
-        chunks = extract_pdf_chunks(self._pdf_path, chunk_size=chunk_size, overlap=chunk_overlap)
-        embeddings = self._embedder.embed([chunk.text for chunk in chunks])
-        if len(embeddings) != len(chunks):
-            raise PdfRetrievalError("embedding count does not match PDF chunks")
-        self._collection.add(
-            ids=[chunk.id for chunk in chunks],
-            documents=[chunk.text for chunk in chunks],
-            embeddings=cast(Any, embeddings),
-            metadatas=[{"page": chunk.page, "filename": chunk.filename} for chunk in chunks],
-        )
-        self._collection.modify(metadata={"pdf_sha256": self.content_version})
+    def _load_active_version(self) -> str:
+        try:
+            with (
+                self._connect(self._database_url, connect_timeout=5) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(
+                    """
+                    SELECT source_sha256
+                    FROM app.pdf_versions
+                    WHERE is_active
+                      AND embedding_model = %s
+                      AND embedding_dimensions = %s
+                    """,
+                    (self._embedding_model, self._DIMENSIONS),
+                )
+                row = cursor.fetchone()
+        except Exception as error:
+            raise PdfRetrievalError("Supabase PDF retrieval is unavailable") from error
+        if not row or not isinstance(row[0], str):
+            raise PdfRetrievalError("no compatible seeded PDF version is active")
+        return row[0]
+
+    @staticmethod
+    def _vector_literal(vector: Sequence[float]) -> str:
+        if len(vector) != SupabasePdfRetriever._DIMENSIONS or not all(
+            isinstance(value, (int, float)) for value in vector
+        ):
+            raise PdfRetrievalError("embedding dimensions do not match the seeded PDF index")
+        return "[" + ",".join(str(float(value)) for value in vector) + "]"
 
     def search(self, query: str, *, top_k: int = 3) -> list[PdfSearchResult]:
         if not query.strip() or top_k <= 0:
             return []
-        vector = self._embedder.embed([query])[0]
-        response = self._collection.query(
-            query_embeddings=cast(Any, [vector]),
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
-        documents = (response.get("documents") or [[]])[0]
-        metadatas = (response.get("metadatas") or [[]])[0]
-        ids = (response.get("ids") or [[]])[0]
-        distances = (response.get("distances") or [[]])[0]
-        results: list[PdfSearchResult] = []
-        for chunk_id, document, metadata, distance in zip(
-            ids, documents, metadatas, distances, strict=True
-        ):
-            if (
-                not isinstance(document, str)
-                or not isinstance(metadata, Mapping)
-                or not isinstance(distance, (int, float))
+        embeddings = self._embedder.embed([query])
+        if len(embeddings) != 1:
+            raise PdfRetrievalError("embeddings response is invalid")
+        vector = self._vector_literal(embeddings[0])
+        try:
+            with (
+                self._connect(self._database_url, connect_timeout=5) as connection,
+                connection.cursor() as cursor,
             ):
+                cursor.execute(
+                    """
+                    SELECT chunk_id, chunk_text, page, filename, distance
+                    FROM public.search_portfolio_pdf(
+                        %s::extensions.vector, %s, %s, %s
+                    )
+                    """,
+                    (vector, top_k, self._embedding_model, self._DIMENSIONS),
+                )
+                rows = cursor.fetchall()
+        except PdfRetrievalError:
+            raise
+        except Exception as error:
+            raise PdfRetrievalError("Supabase PDF retrieval is unavailable") from error
+
+        results: list[PdfSearchResult] = []
+        for row in rows:
+            if len(row) != 5:
                 continue
-            page, filename = metadata.get("page"), metadata.get("filename")
+            chunk_id, text, page, filename, distance = row
             if (
                 isinstance(chunk_id, str)
+                and isinstance(text, str)
                 and isinstance(page, int)
                 and isinstance(filename, str)
+                and isinstance(distance, (int, float))
                 and float(distance) <= self._max_relevant_distance
             ):
                 results.append(
-                    PdfSearchResult(PdfChunk(chunk_id, document, page, filename), float(distance))
+                    PdfSearchResult(PdfChunk(chunk_id, text, page, filename), float(distance))
                 )
         return results

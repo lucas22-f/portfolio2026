@@ -12,6 +12,7 @@ import {
 } from './contact-form';
 
 export const CHAT_PROTOCOL_VERSION = '5';
+export type CompatibilityResult = 'compatible' | 'incompatible' | 'transient';
 export type TextPart = {
   type: 'text';
   text: string;
@@ -329,10 +330,15 @@ export class ChatClient {
   private readonly expectedContentVersion = EXPECTED_CONTENT_VERSION;
   private contactFormSupported = false;
 
-  async checkCompatibility(): Promise<boolean> {
+  async checkCompatibility(): Promise<CompatibilityResult> {
+    let response: Response;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/metadata`);
-      if (!response.ok) return false;
+      response = await fetch(`${API_BASE_URL}/api/v1/metadata`);
+    } catch {
+      return 'transient';
+    }
+    if (!response.ok) return response.status >= 500 ? 'transient' : 'incompatible';
+    try {
       const metadata = (await response.json()) as {
         content_version?: unknown;
         protocol_version?: unknown;
@@ -344,12 +350,12 @@ export class ChatClient {
         typeof capabilities === 'object' &&
         (capabilities as Record<string, unknown>)['interview_contact_form'] === '1' &&
         (capabilities as Record<string, unknown>)['contact_submission'] === '1';
-      return (
-        metadata.content_version === this.expectedContentVersion &&
+      return metadata.content_version === this.expectedContentVersion &&
         metadata.protocol_version === CHAT_PROTOCOL_VERSION
-      );
+        ? 'compatible'
+        : 'incompatible';
     } catch {
-      return false;
+      return 'incompatible';
     }
   }
 

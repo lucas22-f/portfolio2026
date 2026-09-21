@@ -76,10 +76,10 @@ Expect health `200`, matching `content_version` values from health and metadata,
 
 | Target          | Source config                        | Build/runtime                                                                                | Public configuration                                                                                   |
 | --------------- | ------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Vercel frontend | `vercel.json`                        | Builds `frontend/`; serves `frontend/dist/frontend/browser`                                  | `API_BASE_URL` is public and points to the Railway API URL. Set separately for Preview and Production. |
-| Railway backend | `railway.json`, `backend/Dockerfile` | Docker context is repository root; copies `backend/` and `content/v1`; binds `0.0.0.0:$PORT` | Exact `CORS_ALLOWED_ORIGINS` and project-scoped `CORS_PREVIEW_ORIGIN_REGEX`.                           |
+| Vercel frontend | `vercel.json`                        | Builds `frontend/`; serves `frontend/dist/frontend/browser`                                  | `API_BASE_URL` is public and points to the Render API URL. Set separately for Preview and Production. |
+| Render backend | `render.yaml`, `backend/Dockerfile` | Free Docker web service; no persistent disk; binds `0.0.0.0:$PORT` | Exact `CORS_ALLOWED_ORIGINS`, project-scoped `CORS_PREVIEW_ORIGIN_REGEX`, and backend-only `SUPABASE_DB_URL`. |
 
-The Railway image can be checked locally when Docker Desktop is running:
+The Render Docker image can be checked locally when Docker Desktop is running:
 
 ```powershell
 docker build --file backend/Dockerfile --tag portfolio-backend:verify .
@@ -90,22 +90,24 @@ docker build --file backend/Dockerfile --tag portfolio-backend:verify .
 | Variable                    | Owner        | Visibility                  | Notes                                                          |
 | --------------------------- | ------------ | --------------------------- | -------------------------------------------------------------- |
 | `API_BASE_URL`              | Vercel       | Public frontend build value | URL only; it is intentionally exposed to browsers.             |
-| `CORS_ALLOWED_ORIGINS`      | Railway      | Backend configuration       | Comma-separated exact origins; never `*`.                      |
-| `CORS_PREVIEW_ORIGIN_REGEX` | Railway      | Backend configuration       | Anchored regex limited to this portfolio's Vercel previews.    |
-| `OPENAI_API_KEY`            | Railway only | Secret                      | Never commit, expose to Vercel, log, or put in frontend files. |
-| `OPENAI_MODEL`              | Railway      | Backend configuration       | Optional; defaults to `gpt-5-mini`.                            |
+| `CORS_ALLOWED_ORIGINS`      | Render       | Backend configuration       | Comma-separated exact origins; never `*`.                      |
+| `CORS_PREVIEW_ORIGIN_REGEX` | Render       | Backend configuration       | Anchored regex limited to this portfolio's Vercel previews.    |
+| `OPENAI_API_KEY`            | Render only  | Secret                      | Never commit, expose to Vercel, log, or put in frontend files. |
+| `SUPABASE_DB_URL`           | Render only  | Secret                      | Supavisor session-pooler URL; never expose to Vercel.          |
+| `OPENAI_MODEL`              | Render       | Backend configuration       | Optional; defaults to `gpt-5-mini`.                            |
 
 Copy `frontend/.env.example` and `backend/.env.example` only as local references. Do not add real values to Git.
 
 ## Preview, smoke, and rollback
 
 1. Deploy static frontend routes first and confirm navigation works.
-2. Check Railway `/health` and `/metadata`; both must agree on `content_version` before enabling chat traffic.
-3. Send one supported and one unsupported Spanish request to `/api/v1/chat/stream`; confirm ordered SSE and a safe typed refusal.
-4. Confirm a Vercel preview origin is accepted while an unrelated `*.vercel.app` origin is rejected.
-5. If compatibility fails, the frontend disables chat while preserving static routes. Roll back the frontend and Railway deployments independently; no data migration is required.
+2. Manually apply `backend/supabase/migrations/202609200001_pdf_rag_pgvector.sql`, then manually run `poetry run python scripts/seed_pdf_rag.py` with backend secrets in your shell. Configure Render's dashboard with the Supavisor **session** pooler `SUPABASE_DB_URL`; do not use a frontend variable or a transaction pooler URL.
+3. Check Render `/health` and `/metadata`; both must agree on `content_version` before enabling chat traffic.
+4. Send one supported and one unsupported Spanish request to `/api/v1/chat/stream`; confirm ordered SSE and a safe typed refusal.
+5. Confirm a Vercel preview origin is accepted while an unrelated `*.vercel.app` origin is rejected.
+6. If compatibility fails, the frontend disables chat while preserving static routes. Roll back the frontend and Render deployments independently; do not delete a prior Supabase PDF version before the replacement is active.
 
-Hosted deployment, real OpenAI calls, provider billing, and Railway/Vercel secret configuration cannot be proven locally without hosted credentials. The local suite proves the fake-provider, content, CORS, build, and browser boundaries only.
+Hosted deployment, real OpenAI calls, provider billing, and Render/Vercel/Supabase secret configuration cannot be proven locally without hosted credentials. The local suite proves the fake-provider, content, CORS, build, and browser boundaries only.
 
 ## Compatibility, rollback, and restoration checks
 
@@ -120,4 +122,4 @@ npx.cmd playwright test e2e/portfolio-journeys.spec.ts --grep "renders a mocked 
 Pop-Location
 ```
 
-For a deployment rollback, restore the last known compatible Vercel frontend and Railway backend releases independently, then repeat `/health`, `/metadata`, and the two scoped checks above. The mismatch check is the fail-safe: chat must remain disabled while static routes continue to work. No data migration or secret rotation is part of this rollback.
+For a deployment rollback, restore the last known compatible Vercel frontend and Render backend releases independently, then repeat `/health`, `/metadata`, and the two scoped checks above. The mismatch check is the fail-safe: chat must remain disabled while static routes continue to work. Do not delete a Supabase PDF version before its replacement is active.

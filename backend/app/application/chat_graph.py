@@ -101,7 +101,7 @@ async def retrieve(state: ChatGraphState) -> dict[str, object]:
     completion = state["initial_completion"]
     assert completion.tool_call is not None
     try:
-        # search() performs blocking network (embeddings) and Chroma I/O, so
+        # search() performs blocking network (embeddings and pgvector I/O), so
         # offload it to a worker thread to avoid stalling the event loop.
         results = await asyncio.to_thread(state["retriever"].search, completion.tool_call.query)
     except PdfRetrievalError:

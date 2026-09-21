@@ -1,15 +1,17 @@
-"""Minimal Gmail SMTP adapter with bounded, payload-free failures."""
+"""Brevo transactional email adapter with bounded, payload-free failures."""
 
 from __future__ import annotations
 
-import smtplib
+import json
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from email.message import EmailMessage
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from app.application.contact import ContactSubmission
 
-SmtpFactory = Callable[..., smtplib.SMTP_SSL]
+HttpClient = Callable[..., AbstractContextManager[object]]
 
 
 class ContactDeliveryConfigurationError(ValueError):
@@ -23,52 +25,62 @@ class ContactDeliveryFailure(RuntimeError):
     uncertain: bool = False
 
 
-class GmailSmtpContactDelivery:
-    host = "smtp.gmail.com"
-    port = 465
+def _open(request: Request, *, timeout: float) -> AbstractContextManager[object]:
+    return urlopen(request, timeout=timeout)
+
+
+class BrevoContactDelivery:
+    endpoint = "https://api.brevo.com/v3/smtp/email"
 
     def __init__(
         self,
-        email: str,
-        app_password: str,
+        api_key: str,
+        sender_email: str,
+        recipient_email: str,
         *,
         timeout_seconds: float = 8.0,
-        smtp_factory: SmtpFactory = smtplib.SMTP_SSL,
+        http_client: HttpClient = _open,
     ) -> None:
-        if "@" not in email or not app_password.strip() or timeout_seconds <= 0:
+        if (
+            not api_key.strip()
+            or "@" not in sender_email
+            or "@" not in recipient_email
+            or timeout_seconds <= 0
+        ):
             raise ContactDeliveryConfigurationError("contact delivery is unavailable")
-        self._email = email
-        self._app_password = app_password
+        self._api_key = api_key
+        self._sender_email = sender_email
+        self._recipient_email = recipient_email
         self._timeout = timeout_seconds
-        self._smtp_factory = smtp_factory
+        self._http_client = http_client
 
     def deliver(self, submission: ContactSubmission) -> None:
-        message = EmailMessage()
-        message["From"] = self._email
-        message["To"] = self._email
-        message["Reply-To"] = submission.email
-        message["Subject"] = "Portfolio interview contact"
         company = submission.company or "Not provided"
-        message.set_content(
-            f"Name: {submission.name}\nEmail: {submission.email}\n"
-            f"Company: {company}\n\n{submission.message}"
+        payload = {
+            "sender": {"email": self._sender_email},
+            "to": [{"email": self._recipient_email}],
+            "replyTo": {"email": submission.email},
+            "subject": "Portfolio interview contact",
+            "textContent": (
+                f"Name: {submission.name}\nEmail: {submission.email}\n"
+                f"Company: {company}\n\n{submission.message}"
+            ),
+        }
+        request = Request(
+            self.endpoint,
+            data=json.dumps(payload).encode(),
+            headers={"api-key": self._api_key, "content-type": "application/json"},
+            method="POST",
         )
 
         try:
-            with self._smtp_factory(self.host, self.port, timeout=self._timeout) as smtp:
-                smtp.login(self._email, self._app_password)
-                smtp.send_message(message, from_addr=self._email, to_addrs=(self._email,))
+            with self._http_client(request, timeout=self._timeout):
+                pass
         except TimeoutError:
             raise ContactDeliveryFailure("timeout", retryable=False, uncertain=True) from None
-        except (
-            smtplib.SMTPAuthenticationError,
-            smtplib.SMTPRecipientsRefused,
-            smtplib.SMTPSenderRefused,
-        ):
-            raise ContactDeliveryFailure("permanent", retryable=False) from None
-        except smtplib.SMTPResponseException as error:
-            if 400 <= error.smtp_code < 500:
+        except HTTPError as error:
+            if error.code in {408, 429} or 500 <= error.code < 600:
                 raise ContactDeliveryFailure("transient", retryable=True) from None
             raise ContactDeliveryFailure("permanent", retryable=False) from None
-        except (smtplib.SMTPException, OSError):
+        except (URLError, OSError):
             raise ContactDeliveryFailure("network", retryable=True) from None

@@ -1,4 +1,4 @@
-"""Static deployment contracts for the repository-root Vercel/Railway topology."""
+"""Static deployment contracts for the Vercel, Render, and Supabase topology."""
 
 from __future__ import annotations
 
@@ -36,22 +36,21 @@ def test_angular_development_build_defines_only_the_local_api_base_url() -> None
     assert "define" not in configurations["build"]["configurations"]["production"]
 
 
-def test_railway_dockerfile_packages_backend_and_persisted_pdf_index() -> None:
-    railway = json.loads((REPOSITORY_ROOT / "railway.json").read_text(encoding="utf-8"))
+def test_render_free_dockerfile_uses_no_persistent_pdf_disk() -> None:
+    render = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
     dockerfile = (REPOSITORY_ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
 
-    assert railway["build"] == {
-        "builder": "DOCKERFILE",
-        "dockerfilePath": "backend/Dockerfile",
-    }
-    assert railway["deploy"]["healthcheckPath"] == "/health"
+    assert "type: web" in render
+    assert "runtime: docker" in render
+    assert "plan: free" in render
+    assert "disk:" not in render
+    assert "SUPABASE_DB_URL" in render
     assert "COPY backend/pyproject.toml backend/poetry.lock ./" in dockerfile
     assert "COPY backend/README.md ./" in dockerfile
     assert dockerfile.index("COPY backend/README.md ./") < dockerfile.index("poetry sync")
     assert "poetry sync --only main --no-interaction" in dockerfile
     assert "COPY backend/app ./app" in dockerfile
-    assert "COPY backend/app ./app" in dockerfile
-    assert 'VOLUME ["/data/chroma"]' in dockerfile
+    assert "/data/chroma" not in dockerfile
     assert 'CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]' in dockerfile
 
 
@@ -71,6 +70,11 @@ def test_deployment_environment_templates_keep_api_and_cors_values_non_secret() 
         in backend_environment
     )
     assert "OPENAI_API_KEY=" in backend_environment
+    assert "SUPABASE_DB_URL=" in backend_environment
+    assert "PDF_RAG_PERSIST_DIRECTORY" not in backend_environment
+    assert "BREVO_API_KEY=" in backend_environment
+    assert "BREVO_SENDER_EMAIL=" in backend_environment
+    assert "BREVO_RECIPIENT_EMAIL=" in backend_environment
 
 
 def test_cors_origins_accept_only_explicit_environment_values() -> None:

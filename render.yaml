@@ -4,18 +4,14 @@ services:
   - type: web
     runtime: docker
     name: portfolio-lucas-api
-    plan: starter
+    plan: free
     dockerfilePath: backend/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    disk:
-      name: chroma-data
-      mountPath: /data/chroma
-      sizeGB: 1
     envVars:
-      - key: PDF_RAG_PERSIST_DIRECTORY
-        value: /data/chroma
       - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
@@ -25,3 +21,9 @@ services:
         value: "false"
       - key: CONTACT_HMAC_SECRET
         generateValue: true
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_RECIPIENT_EMAIL
+        sync: false

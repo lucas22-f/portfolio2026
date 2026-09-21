@@ -1,18 +1,127 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 
 import { ChatClient, ChatEvent, ChatStreamError } from './chat-client';
 import { ChatPage } from './chat-page';
 
 describe('ChatPage', () => {
+  async function waitForCompatibility(fixture: ComponentFixture<ChatPage>): Promise<void> {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('shows an accessible initialization status while compatibility is pending', async () => {
+    const client = {
+      checkCompatibility: () => new Promise<'transient'>(() => undefined),
+      stream: async () => undefined,
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+
+    const gate = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[data-testid="compatibility-gate"]',
+    );
+    expect(gate?.getAttribute('role')).toBe('dialog');
+    expect(gate?.getAttribute('aria-modal')).toBe('true');
+    expect(gate?.textContent).toContain('El servicio se está iniciando');
+    expect(gate?.textContent).toContain('alrededor de un minuto');
+    expect(gate?.querySelector('hlm-spinner')).not.toBeNull();
+    expect(document.activeElement).toBe(gate);
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid="chat-composer"]')
+        ?.parentElement?.hasAttribute('inert'),
+    ).toBe(true);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('textarea')?.hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('keeps initializing through a transient compatibility failure and enables chat on retry', async () => {
+    vi.useFakeTimers();
+    const client = {
+      checkCompatibility: vi
+        .fn()
+        .mockResolvedValueOnce('transient')
+        .mockResolvedValueOnce('compatible'),
+      stream: async () => undefined,
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(10_000);
+    fixture.detectChanges();
+
+    expect(client.checkCompatibility).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.compatibilityPending()).toBe(false);
+    expect(fixture.componentInstance.compatible()).toBe(true);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="compatibility-gate"]'),
+    ).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('textarea')?.disabled).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('surfaces the unavailable state after bounded compatibility retries', async () => {
+    vi.useFakeTimers();
+    const client = {
+      checkCompatibility: vi.fn().mockResolvedValue('transient'),
+      stream: async () => undefined,
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(60_000);
+    fixture.detectChanges();
+
+    expect(client.checkCompatibility).toHaveBeenCalledTimes(6);
+    expect(fixture.componentInstance.compatibilityPending()).toBe(false);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent,
+    ).toContain('chat no está disponible temporalmente');
+    fixture.destroy();
+    vi.useRealTimers();
+  });
+
+  it('surfaces an incompatible metadata response without retrying', async () => {
+    const client = {
+      checkCompatibility: vi.fn().mockResolvedValue('incompatible'),
+      stream: async () => undefined,
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+
+    expect(client.checkCompatibility).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.compatibilityPending()).toBe(false);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent,
+    ).toContain('chat no está disponible temporalmente');
+  });
+
   it('focuses its accessible entry heading only when focusOnEntry is requested', async () => {
-    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
     fixture.componentRef.setInput('focusOnEntry', true);
-    fixture.detectChanges();
+    await waitForCompatibility(fixture);
 
     expect(document.activeElement).toBe(
       fixture.nativeElement.querySelector('[data-testid="chat-heading"]'),
@@ -22,7 +131,7 @@ describe('ChatPage', () => {
 
   it('announces a Spanish grounded response and renders only its text part', async () => {
     const client = {
-      checkCompatibility: async () => true,
+      checkCompatibility: async () => 'compatible',
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
         onEvent({
           request_id: 'r-1',
@@ -55,6 +164,7 @@ describe('ChatPage', () => {
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
     fixture.componentInstance.message = '¿Qué proyectos realizó?';
     await fixture.componentInstance.submit();
     fixture.detectChanges();
@@ -72,7 +182,7 @@ describe('ChatPage', () => {
 
   it('renders safe activity and groups server-owned citations with a grounded answer', async () => {
     const client = {
-      checkCompatibility: async () => true,
+      checkCompatibility: async () => 'compatible',
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
         onEvent({
           request_id: 'r-1',
@@ -108,6 +218,7 @@ describe('ChatPage', () => {
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
     fixture.componentInstance.message = 'Consulta';
 
     await fixture.componentInstance.submit();
@@ -129,7 +240,7 @@ describe('ChatPage', () => {
   it('keeps consecutive successful turns in chronological transcript order without duplicates', async () => {
     let call = 0;
     const client = {
-      checkCompatibility: async () => true,
+      checkCompatibility: async () => 'compatible',
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
         call += 1;
         const requestId = `r-${call}`;
@@ -161,6 +272,7 @@ describe('ChatPage', () => {
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
     fixture.componentInstance.message = 'Primera consulta.';
     await fixture.componentInstance.submit();
     fixture.componentInstance.message = 'Segunda consulta.';
@@ -183,7 +295,7 @@ describe('ChatPage', () => {
   });
 
   it('derives only safe lifecycle labels from validated chat state', async () => {
-    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
       providers: [{ provide: ChatClient, useValue: client }],
@@ -214,7 +326,7 @@ describe('ChatPage', () => {
 
   it('keeps invalid provider output on the safe non-retryable validation path', async () => {
     const client = {
-      checkCompatibility: async () => true,
+      checkCompatibility: async () => 'compatible',
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
         onEvent({
           request_id: 'r-1',
@@ -240,6 +352,7 @@ describe('ChatPage', () => {
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
     fixture.componentInstance.message = 'Consulta';
 
     await fixture.componentInstance.submit();
@@ -257,7 +370,7 @@ describe('ChatPage', () => {
 
   it('exits streaming and offers retry when the stream closes early', async () => {
     const client = {
-      checkCompatibility: async () => true,
+      checkCompatibility: async () => 'compatible',
       stream: async () => {
         throw new ChatStreamError('stream-closed', true);
       },
@@ -267,6 +380,7 @@ describe('ChatPage', () => {
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
     fixture.componentInstance.message = 'Consulta';
 
     await fixture.componentInstance.submit();
@@ -281,7 +395,10 @@ describe('ChatPage', () => {
   });
 
   it('disables only chat when metadata is incompatible', async () => {
-    const client = { checkCompatibility: async () => false, stream: async () => undefined };
+    const client = {
+      checkCompatibility: async () => 'incompatible',
+      stream: async () => undefined,
+    };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
       providers: [{ provide: ChatClient, useValue: client }],
@@ -297,7 +414,7 @@ describe('ChatPage', () => {
   });
 
   it('uses Tailwind controls that preserve the chat input and action touch contract', async () => {
-    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
       providers: [{ provide: ChatClient, useValue: client }],
@@ -314,7 +431,7 @@ describe('ChatPage', () => {
   });
 
   it('emits the composer return action without submitting a chat message', async () => {
-    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
       providers: [{ provide: ChatClient, useValue: client }],
@@ -324,7 +441,7 @@ describe('ChatPage', () => {
     fixture.componentInstance.returnToIntro.subscribe(() => {
       returnCount += 1;
     });
-    fixture.detectChanges();
+    await waitForCompatibility(fixture);
 
     const action = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
       '[data-testid="reset-journey"]',
@@ -337,7 +454,7 @@ describe('ChatPage', () => {
   });
 
   it('keeps a natural-height conversation with a bounded transcript scroller', async () => {
-    const client = { checkCompatibility: async () => true, stream: async () => undefined };
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
       providers: [{ provide: ChatClient, useValue: client }],
@@ -359,7 +476,7 @@ describe('ChatPage', () => {
 
   it('places a closed contact suggestion after completed response text without stealing focus', async () => {
     const client = {
-      checkCompatibility: async () => true,
+      checkCompatibility: async () => 'compatible',
       submitContact: async () => ({ outcome: 'accepted', retryable: false, request_id: 'safe-id' }),
       stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
         onEvent({
@@ -401,6 +518,7 @@ describe('ChatPage', () => {
       providers: [{ provide: ChatClient, useValue: client }],
     }).compileComponents();
     const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
     fixture.componentInstance.message = 'Quiero una entrevista.';
     await fixture.componentInstance.submit();
     fixture.detectChanges();
