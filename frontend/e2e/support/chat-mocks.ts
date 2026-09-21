@@ -3,10 +3,13 @@ import { Page } from '@playwright/test';
 type ChatMock = {
   metadataVersion: string;
   metadataProtocolVersion?: string;
+  metadataDelayMs?: number;
   contactEnabled?: boolean;
   contactOutcome?: string;
   stream?: string;
 };
+
+const DEFAULT_METADATA_DELAY_MS = 100;
 
 export const contactFormPart = {
   type: 'interview_contact_form',
@@ -22,6 +25,9 @@ export function sse(events: Array<{ type: string }>): string {
 
 export async function mockChatApi(page: Page, mock: ChatMock): Promise<void> {
   await page.route('**/api/v1/metadata', async (route) => {
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, mock.metadataDelayMs ?? DEFAULT_METADATA_DELAY_MS),
+    );
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({

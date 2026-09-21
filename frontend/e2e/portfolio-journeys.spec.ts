@@ -10,6 +10,9 @@ async function unlockAssistant(page: Page): Promise<void> {
   await page.getByTestId('continue-experience').press('Enter');
   await page.getByTestId('continue-projects').press('Enter');
   await page.getByTestId('unlock-assistant').press('Enter');
+  const compatibilityGate = page.getByTestId('compatibility-gate');
+  await expect(compatibilityGate).toBeVisible();
+  await expect(compatibilityGate).toHaveCount(0);
   await expect(page.getByTestId('chat-heading')).toBeFocused();
 }
 

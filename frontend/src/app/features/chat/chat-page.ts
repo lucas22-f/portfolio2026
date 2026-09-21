@@ -1,10 +1,12 @@
 import {
   AfterViewInit,
+  afterNextRender,
   OnDestroy,
   ChangeDetectionStrategy,
   Component,
   ElementRef,
   Input,
+  Injector,
   inject,
   output,
   signal,
@@ -342,6 +344,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   @Input() focusOnEntry = false;
   readonly returnToIntro = output<void>();
   private readonly client = inject(ChatClient);
+  private readonly injector = inject(Injector);
   private readonly heading = viewChild.required<ElementRef<HTMLElement>>('heading');
   private readonly transcriptRef = viewChild<ElementRef<HTMLElement>>('transcript');
   private readonly compatibilityGate = viewChild<ElementRef<HTMLElement>>('compatibilityGate');
@@ -520,8 +523,8 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   }
 
   private restoreFocusAfterCompatibility(): void {
-    queueMicrotask(() => {
+    afterNextRender(() => {
       if (!this.destroyed) this.focusEntry();
-    });
+    }, { injector: this.injector });
   }
 }
