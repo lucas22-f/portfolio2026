@@ -6,6 +6,7 @@ import json
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -26,7 +27,7 @@ class ContactDeliveryFailure(RuntimeError):
 
 
 def _open(request: Request, *, timeout: float) -> AbstractContextManager[object]:
-    return urlopen(request, timeout=timeout)
+    return cast(AbstractContextManager[object], urlopen(request, timeout=timeout))
 
 
 class BrevoContactDelivery:

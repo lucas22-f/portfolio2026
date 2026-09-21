@@ -343,7 +343,7 @@ describe('JourneyPage', () => {
 
     const returnToIntro = page.querySelector<HTMLButtonElement>('[data-testid="reset-journey"]')!;
     expect(returnToIntro.textContent).toContain('Volver al inicio');
-    expect(returnToIntro.closest('[data-testid="chat-composer"]')).not.toBeNull();
+    expect(returnToIntro.closest('[data-testid="compatibility-gate"]')).not.toBeNull();
     expect(page.querySelector('#assistant > [data-testid="reset-journey"]')).toBeNull();
     expect(page.querySelector('app-chat-page')).not.toBeNull();
 

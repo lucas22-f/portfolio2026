@@ -264,17 +264,19 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p class="m-0 text-xs text-muted-foreground">Usá el botón para enviar.</p>
               <div class="flex items-center gap-2">
+                @if (!compatibilityPending()) {
+                  <button
+                    hlmBtn
+                    variant="outline"
+                    class="min-h-11 shrink-0"
+                    data-testid="reset-journey"
+                    type="button"
+                    (click)="returnToIntro.emit()"
+                  >
+                    Volver al inicio
+                  </button>
+                }
                 <button
-                  hlmBtn
-                  variant="outline"
-                  class="min-h-11 shrink-0"
-                  data-testid="reset-journey"
-                  type="button"
-                  [disabled]="compatibilityPending()"
-                  (click)="returnToIntro.emit()"
-                >
-                  Volver al inicio</button
-                ><button
                   hlmBtn
                   class="min-h-11 shrink-0"
                   type="submit"
@@ -316,6 +318,16 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
                   Puede demorar alrededor de un minuto después de un período sin actividad. Esperá
                   un momento mientras verificamos la disponibilidad.
                 </p>
+                <button
+                  hlmBtn
+                  variant="outline"
+                  class="min-h-11 w-fit"
+                  data-testid="reset-journey"
+                  type="button"
+                  (click)="returnToIntro.emit()"
+                >
+                  Volver al inicio
+                </button>
               </div>
             </div>
           </div>
