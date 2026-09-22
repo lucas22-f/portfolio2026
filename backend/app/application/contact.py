@@ -24,6 +24,13 @@ EMAIL_MAX_LENGTH = 254
 COMPANY_MAX_LENGTH = 120
 MESSAGE_MAX_LENGTH = 2_000
 MAX_CONTACT_BODY_BYTES = 8 * 1024
+DEFAULT_CONTACT_IDEMPOTENCY_TTL_SECONDS = 900
+DEFAULT_CONTACT_RATE_WINDOW_SECONDS = 600
+DEFAULT_CONTACT_RATE_LIMIT = 5
+DEFAULT_CONTACT_GUARD_CAPACITY = 2_000
+MAX_CONTACT_GUARD_SECONDS = 86_400
+MAX_CONTACT_RATE_LIMIT = 100
+MAX_CONTACT_GUARD_CAPACITY = 2_000
 
 ContactIntent = Literal["employment", "interview", "recruiting"]
 ContactOutcome = Literal[
@@ -181,13 +188,19 @@ class EphemeralSubmissionGuard:
         self,
         secret: str,
         *,
-        ttl_seconds: int = 900,
-        rate_window_seconds: int = 600,
-        rate_limit: int = 5,
-        capacity: int = 2_000,
+        ttl_seconds: int = DEFAULT_CONTACT_IDEMPOTENCY_TTL_SECONDS,
+        rate_window_seconds: int = DEFAULT_CONTACT_RATE_WINDOW_SECONDS,
+        rate_limit: int = DEFAULT_CONTACT_RATE_LIMIT,
+        capacity: int = DEFAULT_CONTACT_GUARD_CAPACITY,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        if not secret or ttl_seconds <= 0 or rate_limit <= 0 or capacity <= 0:
+        if (
+            not secret
+            or not 0 < ttl_seconds <= MAX_CONTACT_GUARD_SECONDS
+            or not 0 < rate_window_seconds <= MAX_CONTACT_GUARD_SECONDS
+            or not 0 < rate_limit <= MAX_CONTACT_RATE_LIMIT
+            or not 0 < capacity <= MAX_CONTACT_GUARD_CAPACITY
+        ):
             raise ValueError("invalid guard configuration")
         self._secret = secret.encode()
         self._ttl = ttl_seconds

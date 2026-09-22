@@ -25,6 +25,7 @@ from app.application.chat import (
     CandidateValidationError,
     build_event_stream,
 )
+from app.application.chat_admission import ChatAdmissionGuard
 from app.application.chat_graph import ChatGraphState, run_chat_graph
 from app.application.contact import (
     CONTACT_FORM_VERSION,
@@ -175,10 +176,12 @@ def create_app(
     contact_enabled: bool = False,
     contact_delivery: object | None = None,
     contact_guard: EphemeralSubmissionGuard | None = None,
+    chat_admission: ChatAdmissionGuard | None = None,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
     is_ready = ready if ready is not None else retriever is not None and provider is not None
+    admission_guard = chat_admission or ChatAdmissionGuard()
     # This is the reviewed static-portfolio compatibility version consumed by the frontend.
     # It deliberately differs from the PDF hash used only to identify the seeded PDF version.
     compatibility_version = content_version or (
@@ -223,8 +226,8 @@ def create_app(
         return payload
 
     @app.post("/api/v1/chat/stream", tags=["chat"])
-    async def stream_chat(request: ChatRequest):  # type: ignore[no-untyped-def]
-        request_id = request.client_request_id
+    async def stream_chat(chat_request: ChatRequest, request: Request):  # type: ignore[no-untyped-def]
+        request_id = chat_request.client_request_id
 
         def stream_response(events: list[dict[str, object]]) -> StreamingResponse:
             return StreamingResponse(
@@ -238,13 +241,33 @@ def create_app(
             )
 
         started_at = time.perf_counter()
+        peer = request.client.host if request.client else None
+        admission = admission_guard.try_admit(peer)
+        if not admission.accepted or admission.lease is None:
+            _chat_log("chat.admission_rejected", reason=admission.reason)
+            retry_after = admission_guard.config.retry_after_seconds
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": str(retry_after)},
+                content={
+                    "code": "throttled",
+                    "message": (
+                        "El servicio está temporalmente ocupado. "
+                        "Intentá nuevamente en unos segundos."
+                    ),
+                    "retryable": True,
+                    "retry_after_seconds": retry_after,
+                },
+            )
+        lease = admission.lease
         _chat_log(
             "chat.request_accepted",
             request_id=request_id,
-            client_request_id=request.client_request_id,
-            locale=request.locale,
+            client_request_id=chat_request.client_request_id,
+            locale=chat_request.locale,
         )
         if not is_ready or retriever is None or provider is None:
+            admission_guard.release(lease)
             _chat_log(
                 "chat.request_completed",
                 request_id=request_id,
@@ -282,13 +305,13 @@ def create_app(
             )
 
         state: ChatGraphState = {
-            "message": request.message,
+            "message": chat_request.message,
             "retriever": retriever,
             "invoke_model": invoke_model,
             "contact_form_supported": bool(
                 contact_enabled
-                and request.capabilities
-                and request.capabilities.get("interview_contact_form") == CONTACT_FORM_VERSION
+                and chat_request.capabilities
+                and chat_request.capabilities.get("interview_contact_form") == CONTACT_FORM_VERSION
             ),
         }
 
@@ -319,30 +342,31 @@ def create_app(
                 _chat_log(
                     "chat.sse_event_emitted",
                     request_id=request_id,
-                    client_request_id=request.client_request_id,
+                    client_request_id=chat_request.client_request_id,
                     event_type=payload["type"],
                     sequence=payload["sequence"],
                     status_code=200,
                 )
                 return next(_sse([payload]))
 
-            state["on_text_delta"] = on_text_delta
-            state["on_portfolio_search"] = on_portfolio_search
-            _chat_log("chat.graph_started", request_id=request_id)
-            graph_task = asyncio.create_task(run_chat_graph(state))
+            graph_task: asyncio.Task[ChatGraphState] | None = None
             sequence = 1
             tool_event_emitted = False
             terminal_outcome = "cancelled"
-            yield emit(
-                {
-                    "request_id": request_id,
-                    "sequence": sequence,
-                    "type": "start",
-                    "protocol_version": CHAT_PROTOCOL_VERSION,
-                    "content_version": compatibility_version,
-                }
-            )
             try:
+                state["on_text_delta"] = on_text_delta
+                state["on_portfolio_search"] = on_portfolio_search
+                _chat_log("chat.graph_started", request_id=request_id)
+                graph_task = asyncio.create_task(run_chat_graph(state))
+                yield emit(
+                    {
+                        "request_id": request_id,
+                        "sequence": sequence,
+                        "type": "start",
+                        "protocol_version": CHAT_PROTOCOL_VERSION,
+                        "content_version": compatibility_version,
+                    }
+                )
                 while not graph_task.done():
                     try:
                         event_type, delta = await asyncio.wait_for(progress.get(), timeout=0.1)
@@ -494,9 +518,10 @@ def create_app(
                     }
                 )
             finally:
-                if not graph_task.done():
+                if graph_task is not None and not graph_task.done():
                     graph_task.cancel()
                     await asyncio.gather(graph_task, return_exceptions=True)
+                admission_guard.release(lease)
                 _chat_log(
                     "chat.stream_completed",
                     request_id=request_id,
@@ -575,7 +600,9 @@ def create_app(
         if not contact_enabled or contact_delivery is None or contact_guard is None:
             return response(503, "delivery_unavailable")
         fingerprint = hashlib.sha256(raw).hexdigest()
-        client_identity = request.client.host if request.client else "unknown"
+        if request.client is None or not request.client.host:
+            return response(503, "delivery_unavailable")
+        client_identity = request.client.host
         decision = contact_guard.reserve(client_identity, key, fingerprint)
         decision_map = {
             "duplicate_processing": (202, "duplicate_processing", True),
@@ -612,6 +639,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
     """Build production dependencies without making an OpenAI request at startup."""
 
     try:
+        chat_admission = ChatAdmissionGuard.from_environment(os.environ)
         api_key = os.environ["OPENAI_API_KEY"]
         content_root = Path(__file__).resolve().parents[2] / "content" / "v1"
         compatibility_version = load_content_bundle(content_root).portfolio.content_version
@@ -658,6 +686,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         contact_enabled=contact_enabled,
         contact_delivery=contact_delivery,
         contact_guard=contact_guard,
+        chat_admission=chat_admission,
     )
 
 

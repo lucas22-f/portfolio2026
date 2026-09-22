@@ -7,6 +7,10 @@ from pydantic import ValidationError
 
 from app.application.contact import (
     CONTACT_FIELDS,
+    DEFAULT_CONTACT_GUARD_CAPACITY,
+    DEFAULT_CONTACT_IDEMPOTENCY_TTL_SECONDS,
+    DEFAULT_CONTACT_RATE_LIMIT,
+    DEFAULT_CONTACT_RATE_WINDOW_SECONDS,
     ContactSubmission,
     EphemeralSubmissionGuard,
     InterviewContactFormPart,
@@ -116,3 +120,32 @@ def test_guard_allows_only_one_concurrent_reservation() -> None:
         thread.join()
     assert sorted(outcomes) == ["duplicate_processing", "reserved"]
     assert "Ada" not in repr(guard.__dict__)
+
+
+def test_guard_defaults_are_explicit_and_identity_state_is_hmac_only() -> None:
+    guard = EphemeralSubmissionGuard("secret")
+
+    assert guard._ttl == DEFAULT_CONTACT_IDEMPOTENCY_TTL_SECONDS == 900
+    assert guard._rate_window == DEFAULT_CONTACT_RATE_WINDOW_SECONDS == 600
+    assert guard._rate_limit == DEFAULT_CONTACT_RATE_LIMIT == 5
+    assert guard._capacity == DEFAULT_CONTACT_GUARD_CAPACITY == 2_000
+    assert guard.reserve("private-peer", "key", "payload") == "reserved"
+    assert "private-peer" not in repr(guard.__dict__)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"ttl_seconds": 0},
+        {"ttl_seconds": 86_401},
+        {"rate_window_seconds": 0},
+        {"rate_window_seconds": 86_401},
+        {"rate_limit": 0},
+        {"rate_limit": 101},
+        {"capacity": 0},
+        {"capacity": 2_001},
+    ],
+)
+def test_guard_rejects_invalid_or_unbounded_configuration(overrides: dict[str, int]) -> None:
+    with pytest.raises(ValueError, match="invalid guard configuration"):
+        EphemeralSubmissionGuard("secret", **overrides)

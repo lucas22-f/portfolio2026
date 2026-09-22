@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
 
+import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from pytest import LogCaptureFixture
 
+from app.application.chat_admission import (
+    AdmissionDecision,
+    ChatAdmissionConfig,
+    ChatAdmissionGuard,
+)
 from app.application.contact import EphemeralSubmissionGuard
 from app.infrastructure.chat_provider import ChatProvider, ProviderResult, ToolCall
 from app.infrastructure.pdf_rag import PdfChunk, PdfSearchResult
-from app.main import create_app
+from app.main import ChatRequest, create_app
 
 
 class FakeRetriever:
@@ -323,3 +331,164 @@ def test_disabled_contact_is_safe_and_privacy_logs_are_payload_free(
     for secret in ("Private Name", "private@example.com", "Private interview message"):
         assert secret not in serialized
         assert secret not in response.text
+
+
+class RejectingAdmissionGuard(ChatAdmissionGuard):
+    def __init__(self, reason: str) -> None:
+        super().__init__(ChatAdmissionConfig(retry_after_seconds=5), secret=b"test-secret")
+        self.reason = reason
+
+    def try_admit(self, transport_peer: str | None) -> AdmissionDecision:
+        del transport_peer
+        return AdmissionDecision(False, self.reason)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "frequency",
+        "peer_concurrency",
+        "process_concurrency",
+        "state_capacity",
+        "missing_peer",
+    ],
+)
+def test_chat_admission_rejection_is_stable_private_and_before_work(reason: str) -> None:
+    retriever = FakeRetriever()
+    provider = GeneralProvider()
+    client = TestClient(
+        create_app(
+            retriever=retriever,
+            provider=provider,
+            chat_admission=RejectingAdmissionGuard(reason),
+        )
+    )
+    secret = "private prompt must not escape"
+
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={"message": secret, "locale": "es", "client_request_id": "rejected-1"},
+        headers={"X-Forwarded-For": "198.51.100.20", "Forwarded": "for=198.51.100.21"},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "5"
+    assert response.json() == {
+        "code": "throttled",
+        "message": "El servicio está temporalmente ocupado. Intentá nuevamente en unos segundos.",
+        "retryable": True,
+        "retry_after_seconds": 5,
+    }
+    assert secret not in response.text
+    assert "198.51.100" not in response.text
+    assert provider.calls == 0
+
+
+def test_forwarded_headers_do_not_bypass_transport_peer_frequency_limit() -> None:
+    guard = ChatAdmissionGuard(
+        ChatAdmissionConfig(rate_limit=1), secret=b"test-secret"
+    )
+    client = TestClient(
+        create_app(retriever=FakeRetriever(), provider=GeneralProvider(), chat_admission=guard)
+    )
+    body = {"message": "Hola", "locale": "es", "client_request_id": "forwarded-1"}
+
+    first = client.post(
+        "/api/v1/chat/stream", json=body, headers={"X-Forwarded-For": "198.51.100.1"}
+    )
+    body["client_request_id"] = "forwarded-2"
+    second = client.post(
+        "/api/v1/chat/stream", json=body, headers={"Forwarded": "for=198.51.100.2"}
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+
+class FailingProvider(ChatProvider):
+    def generate(self, *args: object, **kwargs: object) -> ProviderResult:
+        del args, kwargs
+        raise RuntimeError("internal provider failure")
+
+
+@pytest.mark.parametrize("provider", [GeneralProvider(), FailingProvider()])
+def test_stream_terminal_paths_release_single_process_slot(provider: ChatProvider) -> None:
+    guard = ChatAdmissionGuard(
+        ChatAdmissionConfig(process_concurrency=1), secret=b"test-secret"
+    )
+    client = TestClient(
+        create_app(retriever=FakeRetriever(), provider=provider, chat_admission=guard)
+    )
+
+    for request_id in ("cleanup-1", "cleanup-2"):
+        response = client.post(
+            "/api/v1/chat/stream",
+            json={"message": "Hola", "locale": "es", "client_request_id": request_id},
+        )
+        assert response.status_code == 200
+
+
+def test_cancelled_stream_releases_single_process_slot() -> None:
+    guard = ChatAdmissionGuard(
+        ChatAdmissionConfig(process_concurrency=1), secret=b"test-secret"
+    )
+    application = create_app(
+        retriever=FakeRetriever(), provider=GeneralProvider(), chat_admission=guard
+    )
+    route = next(
+        route for route in application.routes if route.path == "/api/v1/chat/stream"  # type: ignore[attr-defined]
+    )
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/v1/chat/stream",
+        "query_string": b"",
+        "headers": [],
+        "client": ("test-peer", 1234),
+        "server": ("testserver", 80),
+    }
+
+    async def cancel_after_start() -> None:
+        response = await route.endpoint(  # type: ignore[attr-defined]
+            chat_request=ChatRequest(
+                message="Hola", locale="es", client_request_id="cancelled-1"
+            ),
+            request=Request(scope),
+        )
+        iterator = response.body_iterator
+        await iterator.__anext__()  # type: ignore[attr-defined]
+        await iterator.aclose()  # type: ignore[attr-defined]
+
+    asyncio.run(cancel_after_start())
+
+    assert guard.try_admit("test-peer").accepted
+
+
+def test_contact_forwarded_headers_do_not_bypass_authoritative_peer_limit() -> None:
+    delivery = FakeDelivery()
+    client = TestClient(
+        create_app(
+            retriever=FakeRetriever(),
+            provider=GeneralProvider(),
+            contact_enabled=True,
+            contact_delivery=delivery,
+            contact_guard=EphemeralSubmissionGuard("test-secret", rate_limit=1),
+        )
+    )
+
+    first = client.post(
+        "/api/v1/contact/submissions",
+        json=_contact_payload(),
+        headers={"Idempotency-Key": str(uuid.uuid4()), "X-Forwarded-For": "198.51.100.1"},
+    )
+    second = client.post(
+        "/api/v1/contact/submissions",
+        json=_contact_payload(message="Another message"),
+        headers={"Idempotency-Key": str(uuid.uuid4()), "Forwarded": "for=198.51.100.2"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert delivery.calls == 1

@@ -260,3 +260,15 @@ def test_streamed_response_rejects_malformed_completion_after_a_preview() -> Non
 
     assert failure.value.diagnostic_category == "missing-output-text"
     assert deltas == ["preview"]
+
+
+def test_provider_security_ceiling_defaults_remain_unchanged() -> None:
+    limits = ProviderLimits()
+
+    assert limits.model == "gpt-5-mini"
+    assert limits.timeout_seconds == 15.0
+    assert limits.max_input_tokens == 4_000
+    assert limits.max_output_tokens == 4_048
+    assert limits.cost_limit_usd == 0.05
+    assert limits.input_cost_per_million == 0.0
+    assert limits.output_cost_per_million == 0.0
