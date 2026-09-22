@@ -20,6 +20,7 @@ import { HlmSeparatorImports } from '@spartan-ng/helm/separator';
 import { ValidatedContentBundle } from '../../core/content/content-validator';
 import { ChatPage } from '../chat/chat-page';
 import { ProjectCard } from '../../shared/project-card/project-card';
+import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
 
 @Component({
   selector: 'app-journey-page',
@@ -39,21 +40,9 @@ import { ProjectCard } from '../../shared/project-card/project-card';
         class="journey-ribbon"
         aria-hidden="true"
         data-testid="journey-ribbon"
-        [style.--ribbon-progress]="renderedRibbonProgress()"
       >
-        <svg viewBox="0 0 100 100" focusable="false" role="presentation" preserveAspectRatio="xMidYMid slice">
-          <defs>
-            <filter id="journey-ribbon-glow" x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur stdDeviation="0.55" result="blur" />
-              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-            </filter>
-          </defs>
-          <g class="journey-ribbon__lines" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#journey-ribbon-glow)">
-            @for (path of ribbonPaths(); track $index) {
-              <path [attr.d]="path" />
-            }
-          </g>
-        </svg>
+        <canvas #ribbonCanvas aria-hidden="true" data-testid="journey-ribbon-canvas"></canvas>
+        <div class="journey-ribbon__fallback"></div>
       </div>
       <nav class="sr-only sm:not-sr-only sm:fixed sm:top-1/2 sm:right-8 sm:z-10 sm:-translate-y-1/2" aria-label="Progreso del recorrido" data-testid="journey-progress">
         <ol class="grid gap-3">
@@ -264,10 +253,8 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private readonly content = this.route.snapshot.data['content'] as
     ValidatedContentBundle | undefined;
   readonly progress = signal<0 | 1 | 2 | 3>(0);
-  /** Drives the decorative SVG between its compact line state and open ribbon state. */
+  /** Target progress for the decorative Canvas renderer. */
   readonly ribbonProgress = signal(0);
-  readonly renderedRibbonProgress = signal(0);
-  readonly ribbonPaths = signal(this.buildRibbonPaths(0, 0));
   readonly journeySteps = [
     { id: 'intro', label: 'Introducci\u00f3n' },
     { id: 'experience', label: 'Trayectoria' },
@@ -305,13 +292,14 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private readonly experienceStep = viewChild.required<ElementRef<HTMLElement>>('experienceStep');
   private readonly introStep = viewChild.required<ElementRef<HTMLElement>>('introStep');
   private readonly chatPage = viewChild(ChatPage);
+  private readonly ribbonCanvas = viewChild.required<ElementRef<HTMLCanvasElement>>('ribbonCanvas');
   private observer: IntersectionObserver | undefined;
   private fragmentSubscription: Subscription | undefined;
   private initialFragmentNavigation = true;
   private sectionScrollContainers: HTMLElement[] = [];
   private navigationIntent: { destinationId: string; targetProgress: number } | undefined;
-  private ribbonAnimationFrame: number | undefined;
-  private lastRibbonFrame = 0;
+  private ribbonRenderer: RibbonCanvasRenderer | undefined;
+  private ribbonDestroyed = false;
   private readonly onWindowScroll = () => this.updateRibbonProgressFromScroll();
   private readonly onSectionScroll = (event: Event) => {
     const section = event.currentTarget as HTMLElement;
@@ -370,11 +358,11 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
       section.addEventListener('scroll', this.onSectionScroll, { passive: true }),
     );
     this.updateRibbonProgressFromScroll();
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      this.renderRibbonProgress(0.58, 0);
-    } else {
-      this.ribbonAnimationFrame = requestAnimationFrame((time) => this.animateRibbon(time));
-    }
+    void import('./ribbon-canvas-renderer').then(({ RibbonCanvasRenderer }) => {
+      if (this.ribbonDestroyed) return;
+      this.ribbonRenderer = new RibbonCanvasRenderer(this.ribbonCanvas().nativeElement);
+      this.ribbonRenderer.start(this.ribbonProgress(), window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
+    });
     this.fragmentSubscription = this.route.fragment.subscribe((fragment) => {
       if (fragment) {
         const retainReadingOrder = this.initialFragmentNavigation;
@@ -401,8 +389,9 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.ribbonDestroyed = true;
     window.removeEventListener('scroll', this.onWindowScroll);
-    if (this.ribbonAnimationFrame !== undefined) cancelAnimationFrame(this.ribbonAnimationFrame);
+    this.ribbonRenderer?.destroy();
     this.sectionScrollContainers.forEach((section) =>
       section.removeEventListener('scroll', this.onSectionScroll),
     );
@@ -445,173 +434,6 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private setRibbonProgress(value: number): void {
     const target = Math.min(1, Math.max(0, value));
     this.ribbonProgress.set(target);
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      this.renderRibbonProgress(0.58, 0);
-    }
-  }
-
-  private animateRibbon(time: number): void {
-    const elapsed = this.lastRibbonFrame ? time - this.lastRibbonFrame : 0;
-    this.lastRibbonFrame = time;
-    const current = this.renderedRibbonProgress();
-    const target = this.ribbonProgress();
-    const smoothing = Math.min(0.08, Math.max(0.018, elapsed / 700));
-    const next = Math.abs(target - current) < 0.002 ? target : current + (target - current) * smoothing;
-    this.renderRibbonProgress(next, time / 2300);
-    this.ribbonAnimationFrame = requestAnimationFrame((nextTime) => this.animateRibbon(nextTime));
-  }
-
-  private renderRibbonProgress(progress: number, phase: number): void {
-    this.renderedRibbonProgress.set(progress);
-    this.ribbonPaths.set(this.buildRibbonPaths(progress, phase));
-  }
-
-  private buildRibbonPaths(progress: number, phase: number): string[] {
-    const route = this.buildRibbonRoute(phase);
-    const head = this.getRibbonHeadIndex(progress, route.anchors);
-    const stageDistance = Math.abs(progress * 3 - Math.round(progress * 3));
-    const settledExpansion = 1 - Math.min(1, stageDistance / 0.34);
-    const visiblePointCount = Math.round(188 - settledExpansion * 76);
-    const tail = Math.max(0, Math.floor(head) - visiblePointCount);
-    const spine = route.points.slice(tail, Math.floor(head) + 1);
-    return Array.from({ length: 11 }, (_, thread) => this.offsetRibbonThread(spine, thread, progress));
-  }
-
-  private buildRibbonRoute(phase: number): { points: Array<[number, number]>; anchors: number[] } {
-    const stages = [
-      { center: [82, 49], radius: [15, 8], figure: 'compact' },
-      { center: [50, 86], radius: [60, 43], figure: 'low-swell' },
-      { center: [50, 57], radius: [60, 35], figure: 'diagonal-sweep' },
-      { center: [55, 55], radius: [58, 34], figure: 'lateral-fold' },
-    ] as const;
-    const points: Array<[number, number]> = [];
-    const anchors: number[] = [];
-    for (let stage = 0; stage < stages.length; stage += 1) {
-      const loop = this.buildRibbonLoop(stages[stage], phase + stage * 0.16);
-      if (stage) {
-        const from = points.at(-1)!;
-        const beforeFrom = points.at(-2)!;
-        const fromTangent: [number, number] = [from[0] - beforeFrom[0], from[1] - beforeFrom[1]];
-        const toTangent: [number, number] = [loop[1][0] - loop[0][0], loop[1][1] - loop[0][1]];
-        points.push(...this.buildRibbonConnector(from, loop[0], fromTangent, toTangent, phase));
-      }
-      points.push(...loop);
-      anchors.push(points.length - 1);
-    }
-    return { points, anchors };
-  }
-
-  private buildRibbonLoop(
-    stage: {
-      center: readonly [number, number];
-      radius: readonly [number, number];
-      figure: 'compact' | 'low-swell' | 'diagonal-sweep' | 'lateral-fold';
-    },
-    phase: number,
-  ): Array<[number, number]> {
-    return Array.from({ length: 112 }, (_, index) => {
-      const t = index / 111;
-      const angle = Math.PI * 2 * t;
-      const breathing = 1 + 0.035 * Math.sin(phase * 0.72);
-      const { center, radius } = stage;
-      let x: number;
-      let y: number;
-      if (stage.figure === 'low-swell') {
-        x = center[0] + radius[0] - radius[0] * 2 * t;
-        y =
-          center[1] -
-          breathing * radius[1] * 0.72 * Math.sin(Math.PI * t) +
-          3.2 * Math.sin(angle + phase * 0.14);
-      } else if (stage.figure === 'diagonal-sweep') {
-        x = center[0] - radius[0] + radius[0] * 2 * t;
-        y =
-          center[1] +
-          radius[1] * (1 - 2 * t) +
-          breathing * 7.5 * Math.sin(angle + phase * 0.12);
-      } else if (stage.figure === 'lateral-fold') {
-        x = center[0] + radius[0] - radius[0] * 2 * t + 22 * Math.sin(Math.PI * t);
-        y =
-          center[1] -
-          radius[1] +
-          radius[1] * 2 * t +
-          breathing * 7 * Math.sin(angle * 1.1 + phase * 0.1);
-      } else {
-        x = center[0] - radius[0] + radius[0] * 2 * t;
-        y = center[1] + 0.75 * Math.sin(angle + phase * 0.22);
-      }
-      return [x, y];
-    });
-  }
-
-  private buildRibbonConnector(
-    from: [number, number],
-    to: [number, number],
-    fromTangent: [number, number],
-    toTangent: [number, number],
-    phase: number,
-  ): Array<[number, number]> {
-    const distance = Math.hypot(to[0] - from[0], to[1] - from[1]);
-    const handleLength = Math.min(42, Math.max(14, distance * 0.34));
-    const normalize = ([x, y]: [number, number]): [number, number] => {
-      const length = Math.max(0.001, Math.hypot(x, y));
-      return [x / length, y / length];
-    };
-    const fromDirection = normalize(fromTangent);
-    const toDirection = normalize(toTangent);
-    const controlFrom: [number, number] = [
-      from[0] + fromDirection[0] * handleLength,
-      from[1] + fromDirection[1] * handleLength,
-    ];
-    const controlTo: [number, number] = [
-      to[0] - toDirection[0] * handleLength,
-      to[1] - toDirection[1] * handleLength,
-    ];
-    const chordLength = Math.max(0.001, distance);
-    const chordNormal: [number, number] = [-(to[1] - from[1]) / chordLength, (to[0] - from[0]) / chordLength];
-
-    return Array.from({ length: 94 }, (_, index) => {
-      const t = (index + 1) / 95;
-      const inverse = 1 - t;
-      const bow = Math.sin(Math.PI * t) ** 2 * (1.5 + 0.5 * Math.sin(phase));
-      return [
-        inverse ** 3 * from[0] +
-        3 * inverse ** 2 * t * controlFrom[0] +
-        3 * inverse * t ** 2 * controlTo[0] +
-        t ** 3 * to[0] +
-        chordNormal[0] * bow,
-        inverse ** 3 * from[1] +
-        3 * inverse ** 2 * t * controlFrom[1] +
-        3 * inverse * t ** 2 * controlTo[1] +
-        t ** 3 * to[1] +
-        chordNormal[1] * bow,
-      ];
-    });
-  }
-
-  private getRibbonHeadIndex(progress: number, anchors: number[]): number {
-    const stageProgress = progress * (anchors.length - 1);
-    const stage = Math.min(anchors.length - 2, Math.floor(stageProgress));
-    const local = stageProgress - stage;
-    return anchors[stage] + (anchors[stage + 1] - anchors[stage]) * local;
-  }
-
-  private offsetRibbonThread(points: Array<[number, number]>, thread: number, progress: number): string {
-    const stageDistance = Math.abs(progress * 3 - Math.round(progress * 3));
-    const settledExpansion = 1 - Math.min(1, stageDistance / 0.34);
-    const shifted = points.map(([x, y], index) => {
-      const previous = points[Math.max(0, index - 1)];
-      const next = points[Math.min(points.length - 1, index + 1)];
-      const length = Math.max(0.001, Math.hypot(next[0] - previous[0], next[1] - previous[1]));
-      const alongTrail = index / Math.max(1, points.length - 1);
-      const fan = 0.28 + 0.72 * Math.sin(Math.PI * alongTrail);
-      const stage = Math.min(3, Math.round(progress * 3));
-      const settledHalfSpread = [4.5, 9.5, 11, 10][stage];
-      const travelingHalfSpread = 3.25;
-      const halfSpread = travelingHalfSpread + settledExpansion * (settledHalfSpread - travelingHalfSpread) * fan;
-      const normalizedThread = (thread - 5) / 5;
-      const offset = normalizedThread * halfSpread;
-      return `${(x - ((next[1] - previous[1]) / length) * offset).toFixed(2)} ${(y + ((next[0] - previous[0]) / length) * offset).toFixed(2)}`;
-    });
-    return `M ${shifted.join(' L ')}`;
+    this.ribbonRenderer?.setTarget(target);
   }
 }
