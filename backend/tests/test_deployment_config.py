@@ -47,8 +47,8 @@ def test_render_free_dockerfile_uses_no_persistent_pdf_disk() -> None:
     assert "SUPABASE_DB_URL" in render
     assert "COPY backend/pyproject.toml backend/poetry.lock ./" in dockerfile
     assert "COPY backend/README.md ./" in dockerfile
-    assert dockerfile.index("COPY backend/README.md ./") < dockerfile.index("poetry sync")
-    assert "poetry sync --only main --no-interaction" in dockerfile
+    assert dockerfile.index("COPY backend/README.md ./") < dockerfile.index("poetry install")
+    assert "poetry install --only main --no-root --no-interaction" in dockerfile
     assert "COPY backend/app ./app" in dockerfile
     assert "/data/chroma" not in dockerfile
     assert 'CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]' in dockerfile
