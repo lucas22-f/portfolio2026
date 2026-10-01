@@ -37,6 +37,7 @@ export class RibbonCanvasRenderer {
   private animationFrame: number | undefined;
   private target = 0;
   private displayed = 0;
+  private phase = 0;
   private lastFrame = 0;
   private reducedMotion = false;
   private paused = false;
@@ -61,13 +62,14 @@ export class RibbonCanvasRenderer {
     this.resizeObserver.observe(this.canvas);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.resize();
-    if (!reducedMotion && !document.hidden) this.animationFrame = requestAnimationFrame(this.animate);
+    this.scheduleAnimationFrame();
     return true;
   }
 
   setTarget(progress: number): void {
     this.target = Math.min(1, Math.max(0, progress));
-    if (this.reducedMotion) this.draw(0);
+    if (this.reducedMotion) this.draw(this.phase);
+    else this.scheduleAnimationFrame();
   }
 
   destroy(): void {
@@ -78,24 +80,39 @@ export class RibbonCanvasRenderer {
 
   private readonly onVisibilityChange = (): void => {
     this.paused = document.hidden;
-    if (this.paused && this.animationFrame !== undefined) cancelAnimationFrame(this.animationFrame);
+    if (this.paused && this.animationFrame !== undefined) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = undefined;
+    }
     if (!this.paused && !this.reducedMotion) {
       this.lastFrame = 0;
-      this.animationFrame = requestAnimationFrame(this.animate);
+      this.scheduleAnimationFrame();
     }
   };
 
+  private scheduleAnimationFrame(): void {
+    if (this.animationFrame !== undefined || this.paused || document.hidden || this.reducedMotion) return;
+    if (this.isMobile() && this.displayed === this.target) return;
+    this.animationFrame = requestAnimationFrame(this.animate);
+  }
+
+  private isMobile(): boolean {
+    return window.matchMedia('(max-width: 639px)').matches;
+  }
+
   private readonly animate = (time: number): void => {
+    this.animationFrame = undefined;
     if (this.paused || this.reducedMotion) return;
     const elapsed = this.lastFrame ? time - this.lastFrame : this.quality.quality.frameInterval;
     if (elapsed >= this.quality.quality.frameInterval) {
       const started = performance.now();
       this.displayed = easeRibbonProgress(this.displayed, this.target, elapsed);
-      this.draw(time / 2300);
+      this.phase = time / 2300;
+      this.draw(this.phase);
       this.quality.report(elapsed, performance.now() - started);
       this.lastFrame = time;
     }
-    this.animationFrame = requestAnimationFrame(this.animate);
+    this.scheduleAnimationFrame();
   };
 
   private resize(): void {
@@ -106,7 +123,7 @@ export class RibbonCanvasRenderer {
     const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
     this.canvas.width = Math.round(width * dpr);
     this.canvas.height = Math.round(height * dpr);
-    this.draw(0);
+    this.draw(this.phase);
   }
 
   private draw(phase: number): void {
