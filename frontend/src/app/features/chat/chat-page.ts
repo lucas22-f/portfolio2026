@@ -42,7 +42,7 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
       aria-labelledby="chat-heading"
     >
       <div
-        class="mx-auto grid w-full max-w-4xl px-4 sm:px-8"
+        class="mx-auto grid h-svh w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] px-4 sm:px-8"
         [class.blur-sm]="compatibilityPending()"
         [attr.aria-hidden]="compatibilityPending() ? 'true' : null"
         [attr.inert]="compatibilityPending() ? '' : null"
@@ -67,7 +67,7 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
         <div
           #transcript
           data-testid="chat-transcript"
-          class="chat-transcript max-h-[58svh] overflow-y-auto overscroll-contain py-6 sm:py-8"
+          class="chat-transcript min-h-0 overflow-y-auto overscroll-contain py-6 sm:py-8"
           role="log"
           aria-label="Respuesta del asistente"
           aria-live="polite"
@@ -258,6 +258,7 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
               class="chat-composer-input min-h-24 w-full resize-none bg-transparent px-1 text-[var(--color-text)] outline-none placeholder:text-muted-foreground"
               placeholder="Escribí tu consulta…"
               [(ngModel)]="message"
+              (keydown)="onComposerKeydown($event)"
               [disabled]="state().status === 'streaming' || compatible() !== true"
               [attr.disabled]="compatible() !== true ? '' : null"
               rows="3"
@@ -282,9 +283,7 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
                   hlmBtn
                   class="min-h-11 shrink-0"
                   type="submit"
-                  [disabled]="
-                    !message.trim() || state().status === 'streaming' || compatible() !== true
-                  "
+                  [disabled]="!canSubmit()"
                 >
                   {{ state().status === 'streaming' ? 'Consultando…' : 'Enviar consulta' }}
                 </button>
@@ -407,6 +406,21 @@ export class ChatPage implements AfterViewInit, OnDestroy {
     this.heading().nativeElement.focus();
   }
 
+  onComposerKeydown(event: KeyboardEvent): void {
+    if (
+      event.key !== 'Enter' ||
+      event.shiftKey ||
+      event.isComposing ||
+      event.keyCode === 229 ||
+      !this.canSubmit()
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    void this.submit();
+  }
+
   onTranscriptScroll(): void {
     const transcript = this.transcriptRef()?.nativeElement;
     if (!transcript) return;
@@ -515,6 +529,14 @@ export class ChatPage implements AfterViewInit, OnDestroy {
       }));
       this.scrollTranscriptToBottom();
     }
+  }
+
+  canSubmit(): boolean {
+    return (
+      Boolean(this.message.trim()) &&
+      this.state().status !== 'streaming' &&
+      this.compatible() === true
+    );
   }
 
   retry(): Promise<void> {

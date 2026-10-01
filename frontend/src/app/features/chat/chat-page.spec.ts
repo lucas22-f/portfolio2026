@@ -453,6 +453,67 @@ describe('ChatPage', () => {
     expect(returnCount).toBe(1);
   });
 
+  it('submits a valid composer message when Enter is pressed', async () => {
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn().mockResolvedValue(undefined),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    fixture.componentInstance.message = 'Send this message';
+
+    const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    (fixture.nativeElement as HTMLElement).querySelector('textarea')!.dispatchEvent(event);
+    await fixture.whenStable();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(client.stream).toHaveBeenCalledWith(
+      'Send this message',
+      expect.any(Function),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('preserves Shift+Enter and IME composition as textarea input', async () => {
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn().mockResolvedValue(undefined),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    fixture.componentInstance.message = 'Keep editing';
+    const textarea = (fixture.nativeElement as HTMLElement).querySelector('textarea')!;
+
+    const shiftEnter = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      shiftKey: true,
+      cancelable: true,
+    });
+    textarea.dispatchEvent(shiftEnter);
+    const composingEnter = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      isComposing: true,
+      cancelable: true,
+    });
+    textarea.dispatchEvent(composingEnter);
+    const keyCode229 = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    Object.defineProperty(keyCode229, 'keyCode', { value: 229 });
+    textarea.dispatchEvent(keyCode229);
+
+    expect(shiftEnter.defaultPrevented).toBe(false);
+    expect(composingEnter.defaultPrevented).toBe(false);
+    expect(keyCode229.defaultPrevented).toBe(false);
+    expect(client.stream).not.toHaveBeenCalled();
+  });
+
   it('keeps a natural-height conversation with a bounded transcript scroller', async () => {
     const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
     await TestBed.configureTestingModule({

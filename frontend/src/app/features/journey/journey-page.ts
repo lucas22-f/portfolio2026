@@ -71,12 +71,13 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
                 <p class="m-0 text-lg leading-relaxed text-(--color-text) sm:text-xl">{{ claim.text }}</p>
               }
             </div>
-            <button hlmBtn class="cursor-pointer mt-7 min-h-11" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
+            <p class="mt-5 text-sm font-medium text-(--color-text) sm:hidden">Presioná el botón para continuar el recorrido.</p>
+            <button hlmBtn class="mt-2 min-h-11 cursor-pointer border-2 border-primary shadow-md shadow-primary/20 focus-visible:ring-4 focus-visible:ring-primary/40" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
           </div>
         </div>
       </section>
 
-      <section id="experience" #experienceStep class="journey-section h-svh overflow-hidden scroll-mt-0" aria-labelledby="experience-title">
+      <section id="experience" #experienceStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0 sm:overflow-hidden" aria-labelledby="experience-title">
         <div class="grid h-full content-center gap-3 py-4 sm:gap-6 sm:py-10">
           <div class="max-w-3xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
@@ -155,7 +156,8 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
           </div>
 
           @if (progress() >= 1) {
-            <button hlmBtn class="cursor-pointer min-h-11 w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
+            <p class="text-sm font-medium text-(--color-text) sm:hidden">Presioná el botón para continuar el recorrido.</p>
+            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 focus-visible:ring-4 focus-visible:ring-primary/40" data-testid="continue-experience" type="button" (click)="advance(2)">
               Ver proyectos
             </button>
           }
@@ -214,14 +216,15 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
           </div>
         </hlm-carousel>
           @if (progress() >= 2) {
-            <button hlmBtn class="cursor-pointer min-h-11 w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
+            <p class="text-sm font-medium text-(--color-text) sm:hidden">Presioná el botón para continuar el recorrido.</p>
+            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 focus-visible:ring-4 focus-visible:ring-primary/40" data-testid="continue-projects" type="button" (click)="advance(3)">
               Continuar
             </button>
           }
         </div>
       </section>
 
-      <section id="assistant" #journeyStep class="journey-section relative h-svh overflow-hidden scroll-mt-0" aria-labelledby="assistant-title">
+      <section id="assistant" #journeyStep class="journey-section relative h-svh overflow-y-auto overscroll-contain scroll-mt-0 sm:overflow-hidden" aria-labelledby="assistant-title">
         @if (assistantUnlocked()) {
           <h2 id="assistant-title" class="sr-only !absolute">Asistente</h2>
           <button hlmBtn variant="outline" class="sr-only !absolute focus:not-sr-only focus:absolute focus:right-4 focus:top-4 focus:z-10 focus:min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">Volver al asistente</button>
