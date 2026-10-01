@@ -38,8 +38,40 @@ describe('JourneyPage', () => {
     expect(page.querySelector('#intro')?.classList.contains('h-svh')).toBe(true);
     expect(page.querySelector('#intro')?.classList.contains('overflow-y-auto')).toBe(true);
     expect(page.querySelector('#experience')?.classList.contains('h-svh')).toBe(true);
-    expect(page.querySelector('#experience')?.classList.contains('overflow-y-auto')).toBe(false);
-    expect(page.querySelector('#experience')?.classList.contains('overflow-hidden')).toBe(true);
+    expect(page.querySelector('#experience')?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(page.querySelector('#experience')?.classList.contains('overscroll-contain')).toBe(true);
+    expect(page.querySelector('#experience')?.classList.contains('sm:overflow-hidden')).toBe(true);
+    expect(page.querySelector('#assistant')?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(page.querySelector('#assistant')?.classList.contains('overscroll-contain')).toBe(true);
+    expect(page.querySelector('#assistant')?.classList.contains('sm:overflow-hidden')).toBe(true);
+  });
+
+  it('shows the mobile continue instruction and emphasizes each guided CTA', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+
+    const instructionCount = () =>
+      Array.from(page.querySelectorAll<HTMLElement>('p')).filter(
+        (item) => item.textContent?.trim() === 'Presioná el botón para continuar el recorrido.',
+      ).length;
+    const expectEmphasizedTouchTarget = (testId: string) => {
+      const button = page.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)!;
+      expect(button.classList.contains('border-2')).toBe(true);
+      expect(button.classList.contains('shadow-md')).toBe(true);
+      expect(button.classList.contains('min-h-11')).toBe(true);
+    };
+
+    expect(instructionCount()).toBe(1);
+    expectEmphasizedTouchTarget('continue-intro');
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
+    fixture.detectChanges();
+    expect(instructionCount()).toBe(2);
+    expectEmphasizedTouchTarget('continue-experience');
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
+    fixture.detectChanges();
+    expect(instructionCount()).toBe(3);
+    expectEmphasizedTouchTarget('continue-projects');
   });
 
   it('renders a decorative Canvas ribbon without an SVG path binding loop', () => {
