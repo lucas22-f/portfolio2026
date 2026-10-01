@@ -107,6 +107,97 @@ test('renders a mocked grounded answer with a PDF page citation', async ({ page 
   await expect(page.getByTestId('chat-sources')).toContainText('CV_Lucas_Figueroa_1.pdf, página 1');
 });
 
+test('keeps the chat transcript and composer usable across mobile viewport sizes', async ({ page }) => {
+  const longUnbrokenText = 'portfolio-reference-'.repeat(32);
+  await mockChatApi(page, {
+    metadataVersion: CONTENT_VERSION,
+    stream: sse([
+      {
+        type: 'start',
+        request_id: 'mobile-layout',
+        sequence: 1,
+        protocol_version: '5',
+        content_version: CONTENT_VERSION,
+      },
+      {
+        type: 'part',
+        request_id: 'mobile-layout',
+        sequence: 2,
+        part: { type: 'text', grounding: 'general', text: longUnbrokenText },
+      },
+      {
+        type: 'done',
+        request_id: 'mobile-layout',
+        sequence: 3,
+        protocol_version: '5',
+        content_version: CONTENT_VERSION,
+        model: 'mock-model',
+        usage: { total_tokens: 12 },
+      },
+    ]),
+  });
+
+  for (const viewport of [
+    { width: 360, height: 800 },
+    { width: 375, height: 667 },
+    { width: 390, height: 844 },
+    { width: 412, height: 915 },
+    { width: 430, height: 932 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await unlockAssistant(page);
+
+    const initialLayout = await page.evaluate(() => {
+      const composer = document.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+      const transcript = document.querySelector<HTMLElement>('[data-testid="chat-transcript"]');
+      const heading = document.querySelector<HTMLElement>('[data-testid="chat-heading"]');
+      if (!composer || !transcript || !heading) return undefined;
+      const composerBox = composer.getBoundingClientRect();
+      const transcriptBox = transcript.getBoundingClientRect();
+      const headingBox = heading.getBoundingClientRect();
+      return {
+        composerAtViewportBottom: Math.abs(composerBox.bottom - window.innerHeight) <= 1,
+        middleSpaceAvailable: transcriptBox.height > 48,
+        transcriptBetweenHeadingAndComposer:
+          transcriptBox.top >= headingBox.bottom && transcriptBox.bottom <= composerBox.top,
+      };
+    });
+
+    expect(initialLayout).toEqual({
+      composerAtViewportBottom: true,
+      middleSpaceAvailable: true,
+      transcriptBetweenHeadingAndComposer: true,
+    });
+
+    await page.getByLabel('Tu consulta').fill('¿Podés resumir el portfolio?');
+    await page.getByRole('button', { name: 'Enviar consulta' }).click();
+    await expect(page.getByText(longUnbrokenText)).toBeVisible();
+
+    const layout = await page.evaluate(() => {
+      const composer = document.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+      const transcript = document.querySelector<HTMLElement>('[data-testid="chat-transcript"]');
+      const input = document.querySelector<HTMLTextAreaElement>('#chat-message');
+      if (!composer || !transcript || !input) return undefined;
+      const composerBox = composer.getBoundingClientRect();
+      const transcriptBox = transcript.getBoundingClientRect();
+      const inputBox = input.getBoundingClientRect();
+      return {
+        composerVisible: composerBox.top >= 0 && composerBox.bottom <= window.innerHeight,
+        inputVisible: inputBox.top >= 0 && inputBox.bottom <= window.innerHeight,
+        transcriptDoesNotOverlapComposer: transcriptBox.bottom <= composerBox.top,
+        noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    });
+
+    expect(layout).toEqual({
+      composerVisible: true,
+      inputVisible: true,
+      transcriptDoesNotOverlapComposer: true,
+      noHorizontalOverflow: true,
+    });
+  }
+});
+
 test('shows safe Spanish refusals and invalid stream failures without rendering disallowed parts', async ({
   page,
 }) => {

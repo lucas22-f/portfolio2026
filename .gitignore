@@ -16,6 +16,8 @@ coverage/
 htmlcov/
 playwright-report/
 test-results/
+.playwright-cli/
+/output/playwright/
 
 # Local design and animation workbench artifacts
 artifacts/
