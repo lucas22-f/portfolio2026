@@ -46,7 +46,7 @@ Approximately 150 authored changed lines across implementation, focused tests, a
 - [x] Verification: focused unit spec and frontend build completed; details below.
 - [x] Parent diff readback and independent verification; unrelated changes remain untouched.
 - [x] Risk review: `gentle-ai review assess --cwd <repo> --json` returned an untracked-file declaration requirement; per ODD, the assessment is unassessable/high. Independent verifier found no blockers. RDD is off, so no native review lifecycle was started.
-- [ ] Work-unit commit on `fix/mobile-journey-scroll-lock`; stage only authorized journey/task files and record commit identity here.
+- [x] Work-unit commit `8aa6c01` on `fix/mobile-journey-scroll-lock`; only the journey component/spec and task record were committed. Existing chat/E2E changes remain unstaged and untouched.
 
 ## Verification Results
 Passed: `cd frontend && npm.cmd test -- --include=src/app/features/journey/journey-page.spec.ts --watch=false` — 1 test file, 20 tests passed (exit 0).
