@@ -369,7 +369,7 @@ export class ChatClient {
     logChatLifecycle('chat.request_started', { client_request_id: clientRequestId });
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+      response = await fetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({

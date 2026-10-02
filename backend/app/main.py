@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import hmac
 import json
 import logging
 import os
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable, Iterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -26,6 +28,13 @@ from app.application.chat import (
     build_event_stream,
 )
 from app.application.chat_admission import ChatAdmissionGuard
+from app.application.chat_budget import (
+    BudgetConfig,
+    BudgetDecision,
+    ChatBudgetStore,
+    PostgresChatBudgetStore,
+    UnavailableChatBudgetStore,
+)
 from app.application.chat_graph import ChatGraphState, run_chat_graph
 from app.application.contact import (
     CONTACT_FORM_VERSION,
@@ -177,11 +186,16 @@ def create_app(
     contact_delivery: object | None = None,
     contact_guard: EphemeralSubmissionGuard | None = None,
     chat_admission: ChatAdmissionGuard | None = None,
+    service_token: str | None = None,
+    budget_store: ChatBudgetStore | None = None,
+    budget_config: BudgetConfig | None = None,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
     is_ready = ready if ready is not None else retriever is not None and provider is not None
     admission_guard = chat_admission or ChatAdmissionGuard()
+    effective_budget = budget_config or BudgetConfig()
+    shared_budget: ChatBudgetStore = budget_store or UnavailableChatBudgetStore()
     # This is the reviewed static-portfolio compatibility version consumed by the frontend.
     # It deliberately differs from the PDF hash used only to identify the seeded PDF version.
     compatibility_version = content_version or (
@@ -194,7 +208,7 @@ def create_app(
         allow_origin_regex=preview_origin_regex,
         allow_credentials=False,
         allow_methods=["POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Idempotency-Key"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
     )
 
     @app.get("/health", tags=["system"])
@@ -227,6 +241,14 @@ def create_app(
 
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(chat_request: ChatRequest, request: Request):  # type: ignore[no-untyped-def]
+        if not service_token:
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
+        authorization = request.headers.get("authorization", "")
+        expected = f"Bearer {service_token}".encode("utf-8")
+        supplied = authorization.encode("utf-8")
+        if not hmac.compare_digest(supplied, expected):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
         request_id = chat_request.client_request_id
 
         def stream_response(events: list[dict[str, object]]) -> StreamingResponse:
@@ -277,6 +299,27 @@ def create_app(
             )
             return JSONResponse(status_code=503, content={"status": "unavailable"})
 
+        reservation_id = str(uuid.uuid4())
+        reservation_at = datetime.now(UTC)
+        try:
+            budget_decision = await run_in_threadpool(
+                shared_budget.reserve,
+                reservation_id,
+                reservation_at,
+                effective_budget.turn_reservation_usd,
+            )
+        except Exception:
+            admission_guard.release(lease)
+            _chat_log("chat.budget_store_unavailable", request_id=request_id)
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
+        if budget_decision is not BudgetDecision.ACCEPTED:
+            admission_guard.release(lease)
+            _chat_log("chat.monthly_budget_rejected", request_id=request_id)
+            return JSONResponse(status_code=429, content={"status": "budget_exceeded"})
+        provider_attempted = False
+        known_input_tokens: int | None = None
+        known_output_tokens: int | None = None
+
         async def invoke_model(
             message: str,
             evidence: Mapping[str, object] | None = None,
@@ -285,24 +328,32 @@ def create_app(
             prior_output_tokens: int = 0,
             on_text_delta: Callable[[str], None] | None = None,
         ) -> ProviderResult:
+            nonlocal provider_attempted, known_input_tokens, known_output_tokens
+            provider_attempted = True
+            # A later in-flight call invalidates counts from earlier completed calls;
+            # only a cumulative result from this latest attempt is safe to settle.
+            known_input_tokens = known_output_tokens = None
             if isinstance(provider, OpenAIChatProvider):
-                return await run_in_threadpool(
-                    provider.generate,
-                    message,
-                    evidence,
-                    tool_call,
-                    prior_input_tokens,
-                    prior_output_tokens,
-                    on_text_delta,
+                call = run_in_threadpool(
+                    provider.generate, message, evidence, tool_call, prior_input_tokens,
+                    prior_output_tokens, on_text_delta,
                 )
-            return await run_in_threadpool(
-                provider.generate,
-                message,
-                evidence,
-                tool_call,
-                prior_input_tokens,
-                prior_output_tokens,
-            )
+            else:
+                call = run_in_threadpool(
+                    provider.generate, message, evidence, tool_call, prior_input_tokens,
+                    prior_output_tokens,
+                )
+            try:
+                result = await call
+            except Exception as error:
+                input_count = getattr(error, "total_input_tokens", None)
+                output_count = getattr(error, "total_output_tokens", None)
+                if isinstance(input_count, int) and isinstance(output_count, int):
+                    known_input_tokens, known_output_tokens = input_count, output_count
+                raise
+            known_input_tokens = result.total_input_tokens
+            known_output_tokens = result.total_output_tokens
+            return result
 
         state: ChatGraphState = {
             "message": chat_request.message,
@@ -353,6 +404,7 @@ def create_app(
             sequence = 1
             tool_event_emitted = False
             terminal_outcome = "cancelled"
+            stream_completed = False
             try:
                 state["on_text_delta"] = on_text_delta
                 state["on_portfolio_search"] = on_portfolio_search
@@ -481,6 +533,7 @@ def create_app(
                     sequence += 1
                     event["sequence"] = sequence
                     yield emit(event)
+                stream_completed = True
             except asyncio.CancelledError:
                 _chat_log(
                     "chat.stream_cancelled", request_id=request_id, terminal_outcome="cancelled"
@@ -521,6 +574,45 @@ def create_app(
                 if graph_task is not None and not graph_task.done():
                     graph_task.cancel()
                     await asyncio.gather(graph_task, return_exceptions=True)
+                try:
+                    if not provider_attempted:
+                        await run_in_threadpool(shared_budget.release, reservation_id)
+                    elif (
+                        stream_completed
+                        and known_input_tokens is not None
+                        and known_output_tokens is not None
+                    ):
+                        settled, warning, over_reservation = await run_in_threadpool(
+                            shared_budget.settle,
+                            reservation_id, known_input_tokens, known_output_tokens,
+                            effective_budget.input_cost_per_million,
+                            effective_budget.output_cost_per_million,
+                        )
+                        if warning:
+                            logger.warning(
+                                "chat_observability event=chat.monthly_budget_warning fields=%s",
+                                json.dumps(
+                                    {"month": reservation_at.strftime("%Y-%m")}, sort_keys=True
+                                ),
+                            )
+                        if over_reservation:
+                            logger.error(
+                                "chat_observability event=chat.budget_over_reservation fields=%s",
+                                json.dumps(
+                                    {"request_id": request_id, "settlement_recorded": settled},
+                                    sort_keys=True,
+                                ),
+                            )
+                        if not settled:
+                            _chat_log("chat.budget_settlement_unconfirmed", request_id=request_id)
+                    else:
+                        await run_in_threadpool(shared_budget.retain, reservation_id)
+                        _chat_log(
+                            "chat.budget_reservation_retained_unknown_usage", request_id=request_id
+                        )
+                except Exception:
+                    # If a database response is lost, do not release: the RPC may have committed.
+                    _chat_log("chat.budget_accounting_outcome_unknown", request_id=request_id)
                 admission_guard.release(lease)
                 _chat_log(
                     "chat.stream_completed",
@@ -640,10 +732,19 @@ def _default_app(*, debug: bool = False) -> FastAPI:
 
     try:
         chat_admission = ChatAdmissionGuard.from_environment(os.environ)
+        service_token = os.environ["CHAT_SERVICE_TOKEN"]
         api_key = os.environ["OPENAI_API_KEY"]
         content_root = Path(__file__).resolve().parents[2] / "content" / "v1"
         compatibility_version = load_content_bundle(content_root).portfolio.content_version
-        limits = ProviderLimits(model=os.getenv("OPENAI_MODEL", "gpt-5-mini"))
+        model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        budget_config = BudgetConfig.from_environment(os.environ, model)
+        limits = ProviderLimits(
+            model=model,
+            max_input_tokens=budget_config.max_input_tokens,
+            max_output_tokens=budget_config.max_output_tokens,
+            input_cost_per_million=float(budget_config.input_cost_per_million),
+            output_cost_per_million=float(budget_config.output_cost_per_million),
+        )
         provider = OpenAIChatProvider(api_key=api_key, limits=limits)
         embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
         retriever = SupabasePdfRetriever(
@@ -651,6 +752,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
             OpenAIEmbedder(api_key, model=embedding_model),
             embedding_model=embedding_model,
         )
+        budget_store = PostgresChatBudgetStore(os.environ["SUPABASE_DB_URL"], budget_config)
     except (KeyError, OSError, ValueError, PdfRetrievalError):
         return create_app(ready=False, debug=debug)
     contact_enabled = os.getenv("CONTACT_FORM_ENABLED", "false").lower() == "true"
@@ -687,6 +789,9 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         contact_delivery=contact_delivery,
         contact_guard=contact_guard,
         chat_admission=chat_admission,
+        service_token=service_token,
+        budget_store=budget_store,
+        budget_config=budget_config,
     )
 
 

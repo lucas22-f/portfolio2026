@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import uuid
+from decimal import Decimal
+from typing import Any
 
 import pytest
 from fastapi import Request
@@ -17,10 +19,21 @@ from app.application.chat_admission import (
     ChatAdmissionConfig,
     ChatAdmissionGuard,
 )
+from app.application.chat_budget import InMemoryChatBudgetStore
 from app.application.contact import EphemeralSubmissionGuard
 from app.infrastructure.chat_provider import ChatProvider, ProviderResult, ToolCall
 from app.infrastructure.pdf_rag import PdfChunk, PdfSearchResult
 from app.main import ChatRequest, create_app
+
+CHAT_SERVICE_TOKEN = "test-chat-service-token"
+
+
+def _authorized_client(**app_options: Any) -> TestClient:
+    app_options.setdefault("budget_store", InMemoryChatBudgetStore(Decimal("5"), Decimal("3")))
+    return TestClient(
+        create_app(service_token=CHAT_SERVICE_TOKEN, **app_options),
+        headers={"Authorization": f"Bearer {CHAT_SERVICE_TOKEN}"},
+    )
 
 
 class FakeRetriever:
@@ -97,6 +110,65 @@ def _events(response: object) -> list[dict[str, object]]:
     ]
 
 
+@pytest.mark.parametrize(
+    ("authorization", "expected_status"),
+    [(None, 401), ("Bearer wrong-token", 401), (f"Bearer {CHAT_SERVICE_TOKEN}", 200)],
+)
+def test_chat_requires_service_authorization_before_admission_or_provider_work(
+    authorization: str | None, expected_status: int
+) -> None:
+    provider = GeneralProvider()
+
+    class RecordingAdmissionGuard(ChatAdmissionGuard):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls = 0
+
+        def try_admit(self, transport_peer: str | None) -> AdmissionDecision:
+            self.calls += 1
+            return super().try_admit(transport_peer)
+
+    admission = RecordingAdmissionGuard()
+    client = TestClient(
+        create_app(
+            retriever=FakeRetriever(),
+            provider=provider,
+            chat_admission=admission,
+            service_token=CHAT_SERVICE_TOKEN,
+            budget_store=InMemoryChatBudgetStore(Decimal("5"), Decimal("3")),
+        )
+    )
+    headers = {"Origin": "https://portfolio2026.vercel.app", "X-Forwarded-For": "198.51.100.1"}
+    if authorization is not None:
+        headers["Authorization"] = authorization
+
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={"message": "Hola", "locale": "es", "client_request_id": "auth-1"},
+        headers=headers,
+    )
+
+    assert response.status_code == expected_status
+    assert provider.calls == (1 if expected_status == 200 else 0)
+    assert admission.calls == (1 if expected_status == 200 else 0)
+    if expected_status == 401:
+        assert response.json() == {"detail": "Unauthorized"}
+
+
+def test_chat_auth_configuration_fails_closed_when_service_token_is_missing() -> None:
+    provider = GeneralProvider()
+    client = TestClient(create_app(retriever=FakeRetriever(), provider=provider))
+
+    response = client.post(
+        "/api/v1/chat/stream",
+        json={"message": "Hola", "locale": "es", "client_request_id": "auth-missing-config"},
+        headers={"Authorization": f"Bearer {CHAT_SERVICE_TOKEN}"},
+    )
+
+    assert response.status_code == 503
+    assert provider.calls == 0
+
+
 def test_pdf_grounded_response_emits_filename_page_citations() -> None:
     result = PdfSearchResult(
         PdfChunk("chunk-1", "Python experience", 2, "CV_Lucas_Figueroa_1.pdf"), 0.1
@@ -104,10 +176,8 @@ def test_pdf_grounded_response_emits_filename_page_citations() -> None:
     provider = ToolThenAnswerProvider(
         {"type": "text", "text": "Tiene experiencia en Python.", "grounding": "portfolio"}
     )
-    client = TestClient(
-        create_app(
-            retriever=FakeRetriever([result]), provider=provider, content_version="static-version"
-        )
+    client = _authorized_client(
+        retriever=FakeRetriever([result]), provider=provider, content_version="static-version"
     )
 
     response = client.post(
@@ -123,12 +193,10 @@ def test_pdf_grounded_response_emits_filename_page_citations() -> None:
 
 
 def test_no_relevant_pdf_result_uses_safe_fallback() -> None:
-    client = TestClient(
-        create_app(
-            retriever=FakeRetriever(),
-            provider=ToolThenAnswerProvider(),
-            content_version="static-version",
-        )
+    client = _authorized_client(
+        retriever=FakeRetriever(),
+        provider=ToolThenAnswerProvider(),
+        content_version="static-version",
     )
     events = _events(
         client.post(
@@ -143,14 +211,12 @@ def test_chat_observability_logs_are_payload_free(caplog: LogCaptureFixture) -> 
     caplog.set_level(logging.INFO)
     secret_prompt = "private prompt must not be logged"
     result = PdfSearchResult(PdfChunk("chunk-1", "private PDF chunk", 7, "CV.pdf"), 0.1)
-    client = TestClient(
-        create_app(
-            retriever=FakeRetriever([result]),
-            provider=ToolThenAnswerProvider(
-                {"type": "text", "text": "private model text", "grounding": "portfolio"}
-            ),
-            content_version="static-version",
-        )
+    client = _authorized_client(
+        retriever=FakeRetriever([result]),
+        provider=ToolThenAnswerProvider(
+            {"type": "text", "text": "private model text", "grounding": "portfolio"}
+        ),
+        content_version="static-version",
     )
 
     client.post(
@@ -169,15 +235,13 @@ def test_chat_observability_logs_are_payload_free(caplog: LogCaptureFixture) -> 
 
 def test_metadata_and_chat_negotiate_schema_only_contact_form() -> None:
     delivery = FakeDelivery()
-    client = TestClient(
-        create_app(
-            retriever=FakeRetriever(),
-            provider=GeneralProvider(),
-            content_version="static-version",
-            contact_enabled=True,
-            contact_delivery=delivery,
-            contact_guard=EphemeralSubmissionGuard("test-secret"),
-        )
+    client = _authorized_client(
+        retriever=FakeRetriever(),
+        provider=GeneralProvider(),
+        content_version="static-version",
+        contact_enabled=True,
+        contact_delivery=delivery,
+        contact_guard=EphemeralSubmissionGuard("test-secret"),
     )
     metadata = client.get("/api/v1/metadata").json()
     assert metadata["capabilities"] == {
@@ -205,15 +269,13 @@ def test_metadata_and_chat_negotiate_schema_only_contact_form() -> None:
 
 
 def test_contact_form_falls_back_to_text_only_without_capability_or_clear_intent() -> None:
-    client = TestClient(
-        create_app(
-            retriever=FakeRetriever(),
-            provider=GeneralProvider(),
-            content_version="static-version",
-            contact_enabled=True,
-            contact_delivery=FakeDelivery(),
-            contact_guard=EphemeralSubmissionGuard("test-secret"),
-        )
+    client = _authorized_client(
+        retriever=FakeRetriever(),
+        provider=GeneralProvider(),
+        content_version="static-version",
+        contact_enabled=True,
+        contact_delivery=FakeDelivery(),
+        contact_guard=EphemeralSubmissionGuard("test-secret"),
     )
     for request_id, message, capabilities in (
         ("old-client", "Quiero una entrevista", None),
@@ -356,12 +418,10 @@ class RejectingAdmissionGuard(ChatAdmissionGuard):
 def test_chat_admission_rejection_is_stable_private_and_before_work(reason: str) -> None:
     retriever = FakeRetriever()
     provider = GeneralProvider()
-    client = TestClient(
-        create_app(
-            retriever=retriever,
-            provider=provider,
-            chat_admission=RejectingAdmissionGuard(reason),
-        )
+    client = _authorized_client(
+        retriever=retriever,
+        provider=provider,
+        chat_admission=RejectingAdmissionGuard(reason),
     )
     secret = "private prompt must not escape"
 
@@ -388,8 +448,8 @@ def test_forwarded_headers_do_not_bypass_transport_peer_frequency_limit() -> Non
     guard = ChatAdmissionGuard(
         ChatAdmissionConfig(rate_limit=1), secret=b"test-secret"
     )
-    client = TestClient(
-        create_app(retriever=FakeRetriever(), provider=GeneralProvider(), chat_admission=guard)
+    client = _authorized_client(
+        retriever=FakeRetriever(), provider=GeneralProvider(), chat_admission=guard
     )
     body = {"message": "Hola", "locale": "es", "client_request_id": "forwarded-1"}
 
@@ -416,8 +476,8 @@ def test_stream_terminal_paths_release_single_process_slot(provider: ChatProvide
     guard = ChatAdmissionGuard(
         ChatAdmissionConfig(process_concurrency=1), secret=b"test-secret"
     )
-    client = TestClient(
-        create_app(retriever=FakeRetriever(), provider=provider, chat_admission=guard)
+    client = _authorized_client(
+        retriever=FakeRetriever(), provider=provider, chat_admission=guard
     )
 
     for request_id in ("cleanup-1", "cleanup-2"):
@@ -433,7 +493,11 @@ def test_cancelled_stream_releases_single_process_slot() -> None:
         ChatAdmissionConfig(process_concurrency=1), secret=b"test-secret"
     )
     application = create_app(
-        retriever=FakeRetriever(), provider=GeneralProvider(), chat_admission=guard
+        retriever=FakeRetriever(),
+        provider=GeneralProvider(),
+        chat_admission=guard,
+        service_token=CHAT_SERVICE_TOKEN,
+        budget_store=InMemoryChatBudgetStore(Decimal("5"), Decimal("3")),
     )
     route = next(
         route for route in application.routes if route.path == "/api/v1/chat/stream"  # type: ignore[attr-defined]
@@ -445,7 +509,7 @@ def test_cancelled_stream_releases_single_process_slot() -> None:
         "scheme": "http",
         "path": "/api/v1/chat/stream",
         "query_string": b"",
-        "headers": [],
+        "headers": [(b"authorization", f"Bearer {CHAT_SERVICE_TOKEN}".encode())],
         "client": ("test-peer", 1234),
         "server": ("testserver", 80),
     }

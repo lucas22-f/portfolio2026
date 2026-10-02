@@ -66,6 +66,22 @@ describe('SSE event parsing', () => {
 });
 
 describe('ChatClient SSE streaming', () => {
+  it('posts chat to the same-origin server proxy', async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = async (url) => {
+      requestedUrls.push(String(url));
+      return response(sse([start, { ...done, sequence: 2 }]));
+    };
+
+    try {
+      await new ChatClient().stream('Consulta', () => undefined);
+      expect(requestedUrls).toEqual(['/api/v1/chat/stream']);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('processes an SSE frame fragmented across chunks in sequence order', async () => {
     const body = sse([
       start,
