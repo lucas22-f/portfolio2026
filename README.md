@@ -122,11 +122,12 @@ For hosted setup, manually set `API_BASE_URL` as a Vercel build and Function run
 ## Preview, smoke, and rollback
 
 1. Deploy static frontend routes first and confirm navigation works.
-2. Manually apply `backend/supabase/migrations/202609200001_pdf_rag_pgvector.sql`, then manually run `poetry run python scripts/seed_pdf_rag.py` with backend secrets in your shell. Before enabling chat on a deployment, separately review and manually apply `backend/supabase/migrations/202610010001_chat_monthly_budget.sql`, and verify the backend database role can execute its service-role-only RPCs. Configure Render's dashboard with the Supavisor **session** pooler `SUPABASE_DB_URL`; do not use a frontend variable or a transaction pooler URL. This task does not apply or live-validate either migration.
-3. Check Render `/health` and `/metadata`; both must agree on `content_version` before enabling chat traffic.
-4. Send one supported and one unsupported Spanish request through the Vercel `/api/v1/chat/stream` proxy; confirm ordered SSE and a safe typed refusal. A direct request to Render without `CHAT_SERVICE_TOKEN` should return `401`.
-5. Confirm a Vercel preview origin is accepted while an unrelated `*.vercel.app` origin is rejected.
-6. If compatibility fails, the frontend disables chat while preserving static routes. Roll back the frontend and Render deployments independently; do not delete a prior Supabase PDF version before the replacement is active.
+2. Manually apply `backend/supabase/migrations/202609200001_pdf_rag_pgvector.sql`, then manually run `poetry run python scripts/seed_pdf_rag.py` with backend secrets in your shell. Configure Render's dashboard with the Supavisor **session** pooler `SUPABASE_DB_URL`; do not use a frontend variable or a transaction pooler URL.
+3. Before enabling chat on a deployment, review and apply `backend/supabase/migrations/202610010001_chat_monthly_budget.sql`, then `backend/supabase/migrations/202610020001_pdf_tables_backend_rls.sql`. Verify the backend database role can execute its budget RPCs. The PDF tables are backend-only: `PUBLIC`, `anon`, and `authenticated` have no schema/table privileges; `service_role` is granted explicit RLS policies. No direct public-client access is allowed. These migrations are not applied or live-validated by local verification.
+4. Check Render `/health` and `/metadata`; both must agree on `content_version` before enabling chat traffic.
+5. Send one supported and one unsupported Spanish request through the Vercel `/api/v1/chat/stream` proxy; confirm ordered SSE and a safe typed refusal. A direct request to Render without `CHAT_SERVICE_TOKEN` should return `401`.
+6. Confirm a Vercel preview origin is accepted while an unrelated `*.vercel.app` origin is rejected.
+7. If compatibility fails, the frontend disables chat while preserving static routes. Roll back the frontend and Render deployments independently; do not delete a prior Supabase PDF version before the replacement is active.
 
 Hosted deployment, real OpenAI calls, provider billing, and Render/Vercel/Supabase secret configuration cannot be proven locally without hosted credentials. The local suite proves the fake-provider, content, CORS, build, and browser boundaries only.
 

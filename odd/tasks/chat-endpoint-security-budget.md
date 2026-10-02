@@ -8,10 +8,11 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 
 ## Scope
 - Secure only the chat streaming endpoint through a Vercel server-side proxy and backend service-token verification.
+- Restrict the existing Supabase PDF tables to backend-only access, per the user's confirmed policy; do not add `anon`/`authenticated` read policies.
 - Keep the existing chat SSE protocol and local development workflow functional.
 - After endpoint authentication is implemented and verified, add a durable cross-instance USD 5 monthly spend cap and a one-time-per-period USD 3 structured warning.
 - Use the existing Supabase Postgres connection for shared budget state if implementation inspection confirms the existing connection is suitable.
-- Do not change contact submission authentication, add user accounts, deploy remotely, or expose service credentials to the Angular bundle.
+- Do not change contact submission authentication, add user accounts, or expose service credentials to the Angular bundle. The only authorized production targets are the supplied Vercel project, Supabase project, and Render service, using the user's session.
 
 ## Constraints
 - User-directed order: endpoint security first; budget limits second.
@@ -20,6 +21,7 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - A public proxy still requires the later budget guard; service-token authentication alone does not identify or authenticate visitors.
 - Global budget accounting must be atomic/shared across backend instances, use UTC calendar months, and reserve funds before provider calls so concurrent requests cannot overspend the cap.
 - The USD 3 warning is a structured backend log once per month; no external alert delivery is in scope.
+- The confirmed RLS policy for existing PDF tables is backend-only; public client roles are denied.
 - If provider usage cannot be confirmed after timeout/cancellation, retain the worst-case reservation for the remainder of that UTC month rather than assuming the upstream incurred no cost; this intentionally favors the hard cap over availability.
 - Cost rates default to current `gpt-5-mini` rates and must be configured to match `OPENAI_MODEL` when the model is overridden.
 - No live Vercel, Render, or Supabase configuration or migration execution without explicit remote-operation authorization.
@@ -31,7 +33,7 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - `frontend/src/app/features/chat/chat-client.ts`
 - Root-level Vercel function under `api/` and related Vercel configuration/documentation as required.
 - `backend/app/main.py`, focused backend auth/provider/application modules, and tests.
-- `backend/supabase/migrations/` plus a shared budget persistence module and tests for the second work unit.
+- `backend/supabase/migrations/` for the budget ledger and backend-only PDF table RLS, plus focused tests.
 - `render.yaml` and safe example/config documentation for required environment variable names only; never add secret values.
 - This task document and its Engram mirror at `odd/chat-endpoint-security-budget/tasks`.
 
@@ -45,6 +47,13 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - [x] Document the two environment variable locations/names and the manual deployment configuration needed; never write actual secrets.
 - Route: delegated direct. Verification: focused backend API tests and focused frontend chat-client tests.
 - Rollback boundary: remove the proxy/auth header path and restore the previous direct client route; no unrelated chat behavior changes.
+
+### CHAT-SEC-02 — Restrict PDF tables to backend-only access
+- [x] Add a versioned migration enabling RLS on `app.pdf_versions` and `app.pdf_chunks`, denying `PUBLIC`/`anon`/`authenticated`, and permitting backend roles.
+- [x] Add migration-contract coverage; the focused test and independent source review passed.
+- [ ] Apply the migration to the specified Supabase project and verify RLS state and backend access.
+- Route: delegated direct for code/test work, followed by user-authorized Supabase migration execution.
+- Rollback boundary: revert only the PDF-table RLS/grants migration; retain chat endpoint auth and budget code.
 
 ### CHAT-BUDGET-02 — Enforce shared monthly spend budget
 - [x] Add a dedicated Supabase Postgres monthly usage ledger with transaction-safe, idempotent reserve/settle/release operations and service-role-only access; migration is not applied remotely.
@@ -68,15 +77,18 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 ## Progress and Evidence
 - Initial repository state: clean on `main` at `2104eb8` before feature branch creation.
 - Active local feature branch: `feat/chat-endpoint-security-budget`.
-- Deployment map: Vercel serves Angular static output and Render deploys FastAPI; Supabase Postgres is the existing shared database. No remote services inspected.
+- Deployment map: Vercel serves Angular static output and Render deploys FastAPI; Supabase Postgres is the existing shared database. No remote services were accessed during implementation.
 - Task document and Engram mirror are synchronized.
 - `CHAT-SEC-01`: complete in commit `0186e90` (`feat(chat): secure streaming through Vercel proxy`). Verification: `poetry run pytest tests/test_api.py` (22 passed); `npm run test:unit -- --include=src/app/features/chat/chat-client.spec.ts` (26 passed); `node --test api/v1/chat/stream.test.js` (3 passed); `git diff --check` passed. Independent security verification passed after updating the README smoke flow.
 - Native risk assessment could not classify while the ODD task document was untracked; independent verification was performed. RDD remains off.
-- Hosted Vercel/Render secrets remain unconfigured; no remote operations were performed.
+- User has authorized production rollout to the specified Vercel, Supabase, and Render targets using their session. Read-only checks succeeded for the exact Vercel project, Render service, and Supabase project; no remote writes have been performed.
+- Supabase flagged existing `app.pdf_versions` and `app.pdf_chunks` tables with RLS disabled. User confirmed only backend roles may access them; the local RLS migration/test is complete but not yet applied.
+- `CHAT-SEC-02`: local migration and contract test complete; focused test passed; independent source review passed. User authorized production application; RLS apply/readback remains pending.
 - User selected `stacked-to-main` after the 400-line threshold was exceeded; no PR was created. `CHAT-BUDGET-02` is committed locally as `6490442` (`feat(chat): enforce shared monthly spend budget`); the branch has not been pushed.
+- Current read-only production checks: Vercel project listing, Render deployment listing, Supabase migration listing and schema listing all succeeded after MCP authentication. Supabase reports no tracked migration rows, though the PDF tables exist. No remote writes have been performed.
 - Supabase Postgres remains the chosen shared ledger because it is the existing durable store and Render has no disk; the independent challenge could not confirm live pooler permissions, so use transaction-safe SQL and leave live migration/permission validation for an explicitly authorized deployment step.
 - `CHAT-BUDGET-02`: implementation committed as `6490442`; focused tests pass; disposable PostgreSQL integration remains pending.
 - Budget verification: `poetry run pytest tests/test_chat_budget.py tests/test_chat_provider.py tests/test_api.py tests/test_deployment_config.py tests/test_health.py` (60 passed); `git diff --check` passed. The migration has only source-contract/lock-order assertions; it was not executed against PostgreSQL.
 
 ## Next Step
-Before enabling production chat, set `CHAT_SERVICE_TOKEN` in Vercel and Render, apply the budget migration, and verify its functions/permissions against PostgreSQL. No hosted configuration or migration was performed; obtain explicit remote-operation authorization first.
+Commit `CHAT-SEC-02`, then apply the backend-only RLS migration and budget migration, configure `CHAT_SERVICE_TOKEN` in Vercel and Render, deploy, and verify production. No remote writes have been performed yet.
