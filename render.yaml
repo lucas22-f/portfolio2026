@@ -9,6 +9,16 @@ services:
     dockerContext: .
     healthCheckPath: /health
     envVars:
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: OPENAI_INPUT_COST_PER_MILLION
+        value: "0.25"
+      - key: OPENAI_OUTPUT_COST_PER_MILLION
+        value: "2.00"
+      - key: CHAT_MONTHLY_WARNING_USD
+        value: "3"
+      - key: CHAT_MONTHLY_BUDGET_USD
+        value: "5"
       - key: OPENAI_API_KEY
         sync: false
       - key: SUPABASE_DB_URL

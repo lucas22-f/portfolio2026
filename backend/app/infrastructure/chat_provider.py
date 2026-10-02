@@ -263,7 +263,9 @@ class ProviderLimits:
     model: str = "gpt-5-mini"
     timeout_seconds: float = 15.0
     cost_limit_usd: float = 0.05
-    max_input_tokens: int = 4_000
+    # This full-turn bound is checked against the UTF-8 byte length of each complete
+    # Responses request body, including instructions, schema, and tool definitions.
+    max_input_tokens: int = 128_000
     # A portfolio answer may make two Responses API calls. This is their combined cap.
     max_output_tokens: int = 4_048
     input_cost_per_million: float = 0.0
@@ -389,9 +391,33 @@ class OpenAIChatProvider(ChatProvider):
             tools = None
         elif evidence is not None:
             raise ProviderFailure("invalid-provider-output", retryable=False)
-        encoded_input = json.dumps(input_value, ensure_ascii=False, separators=(",", ":"))
-        # Every model token consumes at least one UTF-8 byte, so byte length is a safe upper bound.
-        estimated_input_tokens = len(encoded_input.encode("utf-8"))
+        payload: dict[str, object] = {
+            "model": self._limits.model,
+            "instructions": instructions,
+            "input": input_value,
+            "max_output_tokens": max_output_tokens,
+            "reasoning": {"effort": "low"},
+            "store": False,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "candidate_parts",
+                    "strict": True,
+                    "schema": _CANDIDATE_PARTS_SCHEMA,
+                }
+            },
+        }
+        if tools is not None:
+            payload["tools"] = tools
+        streaming = on_text_delta is not None and self._transport is _post_json
+        if streaming:
+            payload["stream"] = True
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        # Bound the entire visible provider request, not only input_value: the body
+        # includes fixed instructions, the output schema, tools, and all input data.
+        # Every visible billed token consumes at least one UTF-8 byte. The cumulative
+        # check also counts actual usage reported for prior calls/retries.
+        estimated_input_tokens = len(body)
         prior_tokens = prior_input_tokens + prior_output_tokens
         if prior_tokens + estimated_input_tokens > self._limits.max_input_tokens:
             raise ProviderFailure("limit-exceeded", retryable=False)
@@ -399,38 +425,12 @@ class OpenAIChatProvider(ChatProvider):
             prior_input_tokens + estimated_input_tokens,
             prior_output_tokens + max_output_tokens,
         )
-
-        body = json.dumps(
-            {
-                "model": self._limits.model,
-                "instructions": instructions,
-                "input": input_value,
-                "max_output_tokens": max_output_tokens,
-                "reasoning": {"effort": "low"},
-                "store": False,
-                "text": {
-                    "format": {
-                        "type": "json_schema",
-                        "name": "candidate_parts",
-                        "strict": True,
-                        "schema": _CANDIDATE_PARTS_SCHEMA,
-                    }
-                },
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-        if tools is not None:
-            body_payload = json.loads(body)
-            body_payload["tools"] = tools
-            body = json.dumps(body_payload, ensure_ascii=False, separators=(",", ":")).encode(
-                "utf-8"
-            )
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        if on_text_delta is not None and self._transport is _post_json:
+        if streaming:
+            assert on_text_delta is not None
             return self._stream_response(
                 body,
                 headers,
@@ -473,11 +473,9 @@ class OpenAIChatProvider(ChatProvider):
         on_text_delta: Callable[[str], None],
     ) -> ProviderResult:
         """Forward real Responses text deltas while retaining final schema validation."""
-        payload = json.loads(body)
-        payload["stream"] = True
         request = Request(
             self._RESPONSES_URL,
-            data=json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
+            data=body,
             headers=headers,
             method="POST",
         )

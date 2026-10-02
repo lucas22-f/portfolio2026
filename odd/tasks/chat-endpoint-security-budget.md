@@ -20,10 +20,12 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - A public proxy still requires the later budget guard; service-token authentication alone does not identify or authenticate visitors.
 - Global budget accounting must be atomic/shared across backend instances, use UTC calendar months, and reserve funds before provider calls so concurrent requests cannot overspend the cap.
 - The USD 3 warning is a structured backend log once per month; no external alert delivery is in scope.
+- If provider usage cannot be confirmed after timeout/cancellation, retain the worst-case reservation for the remainder of that UTC month rather than assuming the upstream incurred no cost; this intentionally favors the hard cap over availability.
+- Cost rates default to current `gpt-5-mini` rates and must be configured to match `OPENAI_MODEL` when the model is overridden.
 - No live Vercel, Render, or Supabase configuration or migration execution without explicit remote-operation authorization.
 - Effective TDD: strict TDD is ON (Engram `sdd-init/portfolio2026`). Frontend runner: `npm run test:unit -- --include=<spec-path>` from `frontend/`. Backend runner: `poetry run pytest <test-path>` from `backend/`.
 - Chosen route: delegated direct, one bounded writer per work unit. Trigger evidence: each cross-layer unit touches multiple non-trivial files (Angular client/Vercel function/FastAPI auth; later SQL migration/shared budget store/provider lifecycle/tests).
-- Delivery strategy: `ask-on-risk`; forecast is approximately 300 authored changed lines, to be revised after each work unit. If the accumulated feature approaches 400 authored changed lines, stop before the next commit and follow that strategy.
+- Delivery strategy: `ask-on-risk`. Security work unit `0186e90` contains 517 authored changed lines (456 additions, 61 deletions), exceeding the 400-line planning threshold. User selected `stacked-to-main` before the next commit: each PR merges to `main` in order. No PR was created.
 
 ## Authorized Scope
 - `frontend/src/app/features/chat/chat-client.ts`
@@ -45,11 +47,12 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - Rollback boundary: remove the proxy/auth header path and restore the previous direct client route; no unrelated chat behavior changes.
 
 ### CHAT-BUDGET-02 — Enforce shared monthly spend budget
-- [ ] Add a dedicated Supabase Postgres monthly usage ledger and atomic reserve/settle/release operations, using a migration that is not applied remotely by this task.
-- [ ] Estimate per-request cost using configured model token prices; reserve a request ceiling before provider work and settle from provider-reported aggregate usage afterward.
-- [ ] Emit one structured warning when monthly spend reaches USD 3; deny new reservations once spend plus reservations reaches USD 5.
-- [ ] Fail closed for chat generation if the shared budget store is unavailable or a reservation outcome is unknown.
-- [ ] Test concurrency, cap boundary, warning-once, UTC month rollover, provider failure/cancellation, and settlement behavior.
+- [x] Add a dedicated Supabase Postgres monthly usage ledger with transaction-safe, idempotent reserve/settle/release operations and service-role-only access; migration is not applied remotely.
+- [x] Estimate per-turn cost using configured model token prices; reserve a conservative request ceiling before provider work and settle from cumulative provider-reported input/output usage afterward.
+- [x] Emit one structured warning log when settled monthly spend first reaches USD 3; deny new reservations once spend plus outstanding reservations reaches USD 5.
+- [x] Fail closed for chat generation if the shared budget store is unavailable or a reservation outcome is unknown.
+- [x] Add focused tests for cap boundary, in-memory concurrent reservations, warning-once, UTC rollover, idempotent settlement, provider failure/cancellation, and migration lock/privilege contract.
+- [ ] Execute the migration and concurrency/permission tests against a disposable local PostgreSQL instance; unavailable in this session, and no remote database was accessed.
 - Route: delegated direct. Verification: focused backend budget/API tests.
 - Rollback boundary: remove the monthly ledger and budget admission only; keep CHAT-SEC-01 service authentication intact.
 
@@ -67,9 +70,13 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - Active local feature branch: `feat/chat-endpoint-security-budget`.
 - Deployment map: Vercel serves Angular static output and Render deploys FastAPI; Supabase Postgres is the existing shared database. No remote services inspected.
 - Task document and Engram mirror are synchronized.
-- `CHAT-SEC-01`: complete. Verification: `poetry run pytest tests/test_api.py` (22 passed); `npm run test:unit -- --include=src/app/features/chat/chat-client.spec.ts` (26 passed); `node --test api/v1/chat/stream.test.js` (3 passed); `git diff --check` passed. Independent security verification passed after updating the README smoke flow.
+- `CHAT-SEC-01`: complete in commit `0186e90` (`feat(chat): secure streaming through Vercel proxy`). Verification: `poetry run pytest tests/test_api.py` (22 passed); `npm run test:unit -- --include=src/app/features/chat/chat-client.spec.ts` (26 passed); `node --test api/v1/chat/stream.test.js` (3 passed); `git diff --check` passed. Independent security verification passed after updating the README smoke flow.
 - Native risk assessment could not classify while the ODD task document was untracked; independent verification was performed. RDD remains off.
-- `CHAT-BUDGET-02`: pending.
+- Hosted Vercel/Render secrets remain unconfigured; no remote operations were performed.
+- User selected `stacked-to-main` after the 400-line threshold was exceeded; no PR was created. `CHAT-BUDGET-02` changes remain uncommitted and unpushed on the feature branch.
+- Supabase Postgres remains the chosen shared ledger because it is the existing durable store and Render has no disk; the independent challenge could not confirm live pooler permissions, so use transaction-safe SQL and leave live migration/permission validation for an explicitly authorized deployment step.
+- `CHAT-BUDGET-02`: implementation and focused tests complete; disposable PostgreSQL integration remains pending.
+- Budget verification: `poetry run pytest tests/test_chat_budget.py tests/test_chat_provider.py tests/test_api.py tests/test_deployment_config.py tests/test_health.py` (60 passed); `git diff --check` passed. The migration has only source-contract/lock-order assertions; it was not executed against PostgreSQL.
 
 ## Next Step
-Implement `CHAT-BUDGET-02`; do not configure Render or Vercel secrets or apply Supabase migrations remotely without explicit authorization.
+Commit the completed local budget work unit with the PostgreSQL integration check clearly pending; do not configure Render or Vercel secrets or apply Supabase migrations remotely without explicit authorization.

@@ -86,6 +86,28 @@ def test_initial_call_includes_concise_response_guidance() -> None:
     assert "grounding general" in body["instructions"]
 
 
+def test_full_request_fixed_prompt_schema_and_tools_are_in_input_bound() -> None:
+    calls = 0
+
+    def transport(_: str, __: bytes, ___: dict[str, str], ____: float) -> tuple[int, bytes]:
+        nonlocal calls
+        calls += 1
+        return 200, _response_with_parts(
+            [{"type": "text", "text": "Respuesta", "grounding": "general"}]
+        )
+
+    assert len(json.dumps("q", ensure_ascii=False, separators=(",", ":")).encode("utf-8")) < 100
+    provider = OpenAIChatProvider(
+        api_key="key",
+        limits=ProviderLimits(model="test", max_input_tokens=100),
+        transport=transport,
+    )
+    with pytest.raises(ProviderFailure, match="limit-exceeded"):
+        provider.generate("q")
+
+    assert calls == 0
+
+
 def test_grounded_call_uses_text_only_schema_and_server_owned_citations() -> None:
     received: dict[str, object] = {}
 
@@ -226,6 +248,48 @@ def test_streamed_response_reconstructs_the_completed_structured_candidate() -> 
     assert "".join(deltas) == "Respuesta validada."
 
 
+def test_streaming_checks_the_exact_bytes_sent_to_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    checked_input_lengths: list[int] = []
+    transmitted_bodies: list[bytes] = []
+    final_text = json.dumps(
+        {"parts": [{"type": "text", "text": "Respuesta", "grounding": "general"}]}
+    )
+
+    def urlopen(request, timeout: float) -> _SseResponse:
+        del timeout
+        assert request.data is not None
+        transmitted_bodies.append(request.data)
+        return _SseResponse(
+            [
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "output": [
+                            {
+                                "type": "message",
+                                "content": [{"type": "output_text", "text": final_text}],
+                            }
+                        ],
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                }
+            ]
+        )
+
+    provider = OpenAIChatProvider(api_key="key", limits=ProviderLimits(model="test"))
+    monkeypatch.setattr(
+        provider,
+        "_ensure_projected_cost",
+        lambda input_tokens, output_tokens: checked_input_lengths.append(input_tokens),
+    )
+    monkeypatch.setattr("app.infrastructure.chat_provider.urlopen", urlopen)
+
+    provider.generate("consulta", on_text_delta=lambda _: None)
+
+    assert json.loads(transmitted_bodies[0])["stream"] is True
+    assert checked_input_lengths == [len(transmitted_bodies[0])]
+
+
 def test_streamed_response_rejects_malformed_completion_after_a_preview() -> None:
     provider = OpenAIChatProvider(api_key="key", limits=ProviderLimits(model="test"))
     deltas: list[str] = []
@@ -267,7 +331,7 @@ def test_provider_security_ceiling_defaults_remain_unchanged() -> None:
 
     assert limits.model == "gpt-5-mini"
     assert limits.timeout_seconds == 15.0
-    assert limits.max_input_tokens == 4_000
+    assert limits.max_input_tokens == 128_000
     assert limits.max_output_tokens == 4_048
     assert limits.cost_limit_usd == 0.05
     assert limits.input_cost_per_million == 0.0

@@ -104,6 +104,12 @@ docker build --file backend/Dockerfile --tag portfolio-backend:verify .
 | `OPENAI_API_KEY`            | Render only  | Secret                      | Never commit, expose to Vercel, log, or put in frontend files. |
 | `SUPABASE_DB_URL`           | Render only  | Secret                      | Supavisor session-pooler URL; never expose to Vercel.          |
 | `OPENAI_MODEL`              | Render       | Backend configuration       | Optional; defaults to `gpt-5-mini`.                            |
+| `OPENAI_INPUT_COST_PER_MILLION` | Render    | Backend configuration       | Defaults to USD 0.25 for `gpt-5-mini`; align to the selected model. |
+| `OPENAI_OUTPUT_COST_PER_MILLION` | Render   | Backend configuration       | Defaults to USD 2.00 for `gpt-5-mini`; align to the selected model. |
+| `CHAT_MONTHLY_WARNING_USD`   | Render       | Backend configuration       | Defaults to USD 3; values above 3 are rejected.                |
+| `CHAT_MONTHLY_BUDGET_USD`    | Render       | Backend configuration       | Defaults to USD 5; values above 5 are rejected.                |
+
+The monthly chat budget uses the shared Supabase Postgres ledger, not Render memory. A conservative per-turn reservation is made before model work, then settled from cumulative provider usage. Each bounded provider call is admitted only when prior cumulative usage plus the UTF-8 byte length of its complete serialized request fits the 128,000 input accounting ceiling; this includes fixed instructions, JSON schema, tool definitions, and user/evidence input. Aggregate output is separately limited to 4,048 tokens. At the default `gpt-5-mini` rates, the resulting maximum reservation is USD 0.040096 per turn, rounded upward (`128,000 × 0.25 + 4,048 × 2`, per million tokens). Unknown usage after provider timeout/cancellation keeps the full reservation for that UTC month and logs `chat.budget_reservation_retained_unknown_usage`; this can reduce availability, intentionally. If `OPENAI_MODEL` changes, explicitly configure both token prices to at least the selected model's current rates. For `gpt-5-mini`, configured prices below USD 0.25 input / USD 2.00 output per million are rejected. Monthly cap and warning overrides may lower, but not raise, the approved USD 5 / USD 3 values.
 
 Copy `frontend/.env.example` and `backend/.env.example` only as local references. Do not add real values to Git.
 
@@ -116,7 +122,7 @@ For hosted setup, manually set `API_BASE_URL` as a Vercel build and Function run
 ## Preview, smoke, and rollback
 
 1. Deploy static frontend routes first and confirm navigation works.
-2. Manually apply `backend/supabase/migrations/202609200001_pdf_rag_pgvector.sql`, then manually run `poetry run python scripts/seed_pdf_rag.py` with backend secrets in your shell. Configure Render's dashboard with the Supavisor **session** pooler `SUPABASE_DB_URL`; do not use a frontend variable or a transaction pooler URL.
+2. Manually apply `backend/supabase/migrations/202609200001_pdf_rag_pgvector.sql`, then manually run `poetry run python scripts/seed_pdf_rag.py` with backend secrets in your shell. Before enabling chat on a deployment, separately review and manually apply `backend/supabase/migrations/202610010001_chat_monthly_budget.sql`, and verify the backend database role can execute its service-role-only RPCs. Configure Render's dashboard with the Supavisor **session** pooler `SUPABASE_DB_URL`; do not use a frontend variable or a transaction pooler URL. This task does not apply or live-validate either migration.
 3. Check Render `/health` and `/metadata`; both must agree on `content_version` before enabling chat traffic.
 4. Send one supported and one unsupported Spanish request through the Vercel `/api/v1/chat/stream` proxy; confirm ordered SSE and a safe typed refusal. A direct request to Render without `CHAT_SERVICE_TOKEN` should return `401`.
 5. Confirm a Vercel preview origin is accepted while an unrelated `*.vercel.app` origin is rejected.

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import uuid
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -18,6 +19,7 @@ from app.application.chat_admission import (
     ChatAdmissionConfig,
     ChatAdmissionGuard,
 )
+from app.application.chat_budget import InMemoryChatBudgetStore
 from app.application.contact import EphemeralSubmissionGuard
 from app.infrastructure.chat_provider import ChatProvider, ProviderResult, ToolCall
 from app.infrastructure.pdf_rag import PdfChunk, PdfSearchResult
@@ -27,6 +29,7 @@ CHAT_SERVICE_TOKEN = "test-chat-service-token"
 
 
 def _authorized_client(**app_options: Any) -> TestClient:
+    app_options.setdefault("budget_store", InMemoryChatBudgetStore(Decimal("5"), Decimal("3")))
     return TestClient(
         create_app(service_token=CHAT_SERVICE_TOKEN, **app_options),
         headers={"Authorization": f"Bearer {CHAT_SERVICE_TOKEN}"},
@@ -132,6 +135,7 @@ def test_chat_requires_service_authorization_before_admission_or_provider_work(
             provider=provider,
             chat_admission=admission,
             service_token=CHAT_SERVICE_TOKEN,
+            budget_store=InMemoryChatBudgetStore(Decimal("5"), Decimal("3")),
         )
     )
     headers = {"Origin": "https://portfolio2026.vercel.app", "X-Forwarded-For": "198.51.100.1"}
@@ -493,6 +497,7 @@ def test_cancelled_stream_releases_single_process_slot() -> None:
         provider=GeneralProvider(),
         chat_admission=guard,
         service_token=CHAT_SERVICE_TOKEN,
+        budget_store=InMemoryChatBudgetStore(Decimal("5"), Decimal("3")),
     )
     route = next(
         route for route in application.routes if route.path == "/api/v1/chat/stream"  # type: ignore[attr-defined]
