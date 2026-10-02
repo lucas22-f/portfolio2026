@@ -73,10 +73,10 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - `CHAT-SEC-01`: complete in commit `0186e90` (`feat(chat): secure streaming through Vercel proxy`). Verification: `poetry run pytest tests/test_api.py` (22 passed); `npm run test:unit -- --include=src/app/features/chat/chat-client.spec.ts` (26 passed); `node --test api/v1/chat/stream.test.js` (3 passed); `git diff --check` passed. Independent security verification passed after updating the README smoke flow.
 - Native risk assessment could not classify while the ODD task document was untracked; independent verification was performed. RDD remains off.
 - Hosted Vercel/Render secrets remain unconfigured; no remote operations were performed.
-- User selected `stacked-to-main` after the 400-line threshold was exceeded; no PR was created. `CHAT-BUDGET-02` changes remain uncommitted and unpushed on the feature branch.
+- User selected `stacked-to-main` after the 400-line threshold was exceeded; no PR was created. `CHAT-BUDGET-02` is committed locally as `6490442` (`feat(chat): enforce shared monthly spend budget`); the branch has not been pushed.
 - Supabase Postgres remains the chosen shared ledger because it is the existing durable store and Render has no disk; the independent challenge could not confirm live pooler permissions, so use transaction-safe SQL and leave live migration/permission validation for an explicitly authorized deployment step.
-- `CHAT-BUDGET-02`: implementation and focused tests complete; disposable PostgreSQL integration remains pending.
+- `CHAT-BUDGET-02`: implementation committed as `6490442`; focused tests pass; disposable PostgreSQL integration remains pending.
 - Budget verification: `poetry run pytest tests/test_chat_budget.py tests/test_chat_provider.py tests/test_api.py tests/test_deployment_config.py tests/test_health.py` (60 passed); `git diff --check` passed. The migration has only source-contract/lock-order assertions; it was not executed against PostgreSQL.
 
 ## Next Step
-Commit the completed local budget work unit with the PostgreSQL integration check clearly pending; do not configure Render or Vercel secrets or apply Supabase migrations remotely without explicit authorization.
+Before enabling production chat, set `CHAT_SERVICE_TOKEN` in Vercel and Render, apply the budget migration, and verify its functions/permissions against PostgreSQL. No hosted configuration or migration was performed; obtain explicit remote-operation authorization first.
