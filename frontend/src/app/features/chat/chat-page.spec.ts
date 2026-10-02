@@ -129,6 +129,25 @@ describe('ChatPage', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="chat-heading"]')?.tagName).toBe('H3');
   });
 
+  it('focuses its entry heading without scrolling the page', async () => {
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const heading = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[data-testid="chat-heading"]',
+    )!;
+    const focus = vi.spyOn(heading, 'focus');
+
+    fixture.componentInstance.focusEntry();
+
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(document.activeElement).toBe(heading);
+  });
+
   it('announces a Spanish grounded response and renders only its text part', async () => {
     const client = {
       checkCompatibility: async () => 'compatible',

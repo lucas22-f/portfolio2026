@@ -403,7 +403,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   }
 
   focusEntry(): void {
-    this.heading().nativeElement.focus();
+    this.heading().nativeElement.focus({ preventScroll: true });
   }
 
   onComposerKeydown(event: KeyboardEvent): void {
