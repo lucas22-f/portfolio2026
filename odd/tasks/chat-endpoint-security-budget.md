@@ -102,4 +102,4 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - Budget verification: `poetry run pytest tests/test_chat_budget.py tests/test_chat_provider.py tests/test_api.py tests/test_deployment_config.py tests/test_health.py` (60 passed); `git diff --check` passed. The budget ledger's SQL concurrency/lock-order behavior has not been exercised against a disposable PostgreSQL instance; the RLS migrations were applied and read back separately.
 
 ## Next Step
-Configure `CHAT_SERVICE_TOKEN` in Vercel and Render, deploy, and verify production.
+The feature branch is local-only and has no upstream; the connected Render service deploys `main`. Wait for the user's explicit authorization to push this branch and prepare its first stacked-to-main PR (merge remains the user's decision). Before production deployment, set Vercel `API_BASE_URL` to the Render service URL (it is currently empty), configure the shared `CHAT_SERVICE_TOKEN` in Vercel and Render, then deploy and verify. Disposable PostgreSQL concurrency testing remains pending.
