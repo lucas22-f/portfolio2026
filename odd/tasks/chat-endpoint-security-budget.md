@@ -83,7 +83,7 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - Native risk assessment could not classify while the ODD task document was untracked; independent verification was performed. RDD remains off.
 - User has authorized production rollout to the specified Vercel, Supabase, and Render targets using their session. Read-only checks succeeded for the exact Vercel project, Render service, and Supabase project; no remote writes have been performed.
 - Supabase flagged existing `app.pdf_versions` and `app.pdf_chunks` tables with RLS disabled. User confirmed only backend roles may access them; the local RLS migration/test is complete but not yet applied.
-- `CHAT-SEC-02`: local migration and contract test complete; focused test passed; independent source review passed. User authorized production application; RLS apply/readback remains pending.
+- `CHAT-SEC-02`: local migration and contract test committed as `a05ca58` (`fix(security): restrict Supabase PDF access to backend`). `poetry run pytest tests/test_pdf_rls_migration.py` passed (1 test); independent source review passed. User authorized production application; RLS apply/readback remains pending.
 - User selected `stacked-to-main` after the 400-line threshold was exceeded; no PR was created. `CHAT-BUDGET-02` is committed locally as `6490442` (`feat(chat): enforce shared monthly spend budget`); the branch has not been pushed.
 - Current read-only production checks: Vercel project listing, Render deployment listing, Supabase migration listing and schema listing all succeeded after MCP authentication. Supabase reports no tracked migration rows, though the PDF tables exist. No remote writes have been performed.
 - Supabase Postgres remains the chosen shared ledger because it is the existing durable store and Render has no disk; the independent challenge could not confirm live pooler permissions, so use transaction-safe SQL and leave live migration/permission validation for an explicitly authorized deployment step.
@@ -91,4 +91,4 @@ The Angular client currently calls the public FastAPI endpoint directly. The rou
 - Budget verification: `poetry run pytest tests/test_chat_budget.py tests/test_chat_provider.py tests/test_api.py tests/test_deployment_config.py tests/test_health.py` (60 passed); `git diff --check` passed. The migration has only source-contract/lock-order assertions; it was not executed against PostgreSQL.
 
 ## Next Step
-Commit `CHAT-SEC-02`, then apply the backend-only RLS migration and budget migration, configure `CHAT_SERVICE_TOKEN` in Vercel and Render, deploy, and verify production. No remote writes have been performed yet.
+Apply the backend-only RLS migration and budget migration, configure `CHAT_SERVICE_TOKEN` in Vercel and Render, deploy, and verify production. No remote writes have been performed yet.
