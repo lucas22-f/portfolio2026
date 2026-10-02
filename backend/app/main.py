@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -177,6 +178,7 @@ def create_app(
     contact_delivery: object | None = None,
     contact_guard: EphemeralSubmissionGuard | None = None,
     chat_admission: ChatAdmissionGuard | None = None,
+    service_token: str | None = None,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
@@ -194,7 +196,7 @@ def create_app(
         allow_origin_regex=preview_origin_regex,
         allow_credentials=False,
         allow_methods=["POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Idempotency-Key"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
     )
 
     @app.get("/health", tags=["system"])
@@ -227,6 +229,14 @@ def create_app(
 
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(chat_request: ChatRequest, request: Request):  # type: ignore[no-untyped-def]
+        if not service_token:
+            return JSONResponse(status_code=503, content={"status": "unavailable"})
+        authorization = request.headers.get("authorization", "")
+        expected = f"Bearer {service_token}".encode("utf-8")
+        supplied = authorization.encode("utf-8")
+        if not hmac.compare_digest(supplied, expected):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
         request_id = chat_request.client_request_id
 
         def stream_response(events: list[dict[str, object]]) -> StreamingResponse:
@@ -640,6 +650,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
 
     try:
         chat_admission = ChatAdmissionGuard.from_environment(os.environ)
+        service_token = os.environ["CHAT_SERVICE_TOKEN"]
         api_key = os.environ["OPENAI_API_KEY"]
         content_root = Path(__file__).resolve().parents[2] / "content" / "v1"
         compatibility_version = load_content_bundle(content_root).portfolio.content_version
@@ -687,6 +698,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         contact_delivery=contact_delivery,
         contact_guard=contact_guard,
         chat_admission=chat_admission,
+        service_token=service_token,
     )
 
 
