@@ -73,6 +73,18 @@ _PROVIDER_MESSAGES = {
 }
 _NO_PORTFOLIO_RESULTS_MESSAGE = "No encontré información del portfolio sobre ese tema."
 logger = logging.getLogger(__name__)
+_STARTUP_STAGES = frozenset(
+    {
+        "chat_admission",
+        "service_token",
+        "openai_api_key",
+        "content_bundle",
+        "budget_config",
+        "provider",
+        "retriever",
+        "budget_store",
+    }
+)
 
 
 def _chat_log(event: str, **fields: object) -> None:
@@ -730,13 +742,18 @@ def create_app(
 def _default_app(*, debug: bool = False) -> FastAPI:
     """Build production dependencies without making an OpenAI request at startup."""
 
+    stage = "chat_admission"
     try:
         chat_admission = ChatAdmissionGuard.from_environment(os.environ)
+        stage = "service_token"
         service_token = os.environ["CHAT_SERVICE_TOKEN"]
+        stage = "openai_api_key"
         api_key = os.environ["OPENAI_API_KEY"]
         content_root = Path(__file__).resolve().parents[2] / "content" / "v1"
+        stage = "content_bundle"
         compatibility_version = load_content_bundle(content_root).portfolio.content_version
         model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+        stage = "budget_config"
         budget_config = BudgetConfig.from_environment(os.environ, model)
         limits = ProviderLimits(
             model=model,
@@ -745,15 +762,24 @@ def _default_app(*, debug: bool = False) -> FastAPI:
             input_cost_per_million=float(budget_config.input_cost_per_million),
             output_cost_per_million=float(budget_config.output_cost_per_million),
         )
+        stage = "provider"
         provider = OpenAIChatProvider(api_key=api_key, limits=limits)
         embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        stage = "retriever"
         retriever = SupabasePdfRetriever(
             os.environ["SUPABASE_DB_URL"],
             OpenAIEmbedder(api_key, model=embedding_model),
             embedding_model=embedding_model,
         )
+        stage = "budget_store"
         budget_store = PostgresChatBudgetStore(os.environ["SUPABASE_DB_URL"], budget_config)
-    except (KeyError, OSError, ValueError, PdfRetrievalError):
+    except (KeyError, OSError, ValueError, PdfRetrievalError) as error:
+        if stage in _STARTUP_STAGES:
+            logger.error(
+                "startup_readiness_failed stage=%s error_type=%s",
+                stage,
+                type(error).__name__,
+            )
         return create_app(ready=False, debug=debug)
     contact_enabled = os.getenv("CONTACT_FORM_ENABLED", "false").lower() == "true"
     contact_delivery: BrevoContactDelivery | None = None
