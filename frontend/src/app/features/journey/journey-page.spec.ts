@@ -1,11 +1,54 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { onScroll } from 'animejs';
+import { vi } from 'vitest';
 
 import { ChatPage } from '../chat/chat-page';
 import { JourneyPage } from './journey-page';
 
+vi.mock('animejs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('animejs')>();
+  return { ...actual, onScroll: vi.fn() };
+});
+
+type ScrollObserverOptions = NonNullable<Parameters<typeof onScroll>[0]>;
+
+const scrollObservers: Array<{
+  progress: number;
+  target: HTMLElement;
+  refresh: ReturnType<typeof vi.fn>;
+  revert: ReturnType<typeof vi.fn>;
+}> = [];
+
+function optionsForSection(section: HTMLElement): ScrollObserverOptions {
+  const call = vi.mocked(onScroll).mock.calls.find(([options]) => options?.container === section);
+  const options = call?.[0];
+  if (!options) throw new Error(`No Anime.js scroll observer was created for #${section.id}.`);
+  return options;
+}
+
+function emitScrollProgress(section: HTMLElement, progress: number): void {
+  optionsForSection(section).onUpdate?.({ progress } as ReturnType<typeof onScroll>);
+}
+
+async function waitForScrollObservers(): Promise<void> {
+  await vi.waitFor(() => expect(vi.mocked(onScroll).mock.calls).toHaveLength(4));
+}
+
 describe('JourneyPage', () => {
   beforeEach(() => {
+    scrollObservers.length = 0;
+    vi.mocked(onScroll).mockReset();
+    vi.mocked(onScroll).mockImplementation((options) => {
+      const observer = {
+        progress: 0,
+        target: options?.target as HTMLElement,
+        refresh: vi.fn(),
+        revert: vi.fn(),
+      };
+      scrollObservers.push(observer);
+      return observer as unknown as ReturnType<typeof onScroll>;
+    });
     TestBed.configureTestingModule({
       imports: [JourneyPage],
       providers: [provideRouter([])],
@@ -100,34 +143,77 @@ describe('JourneyPage', () => {
     expect(fixture.componentInstance.ribbonProgress()).toBeCloseTo(1 / 3);
   });
 
-  it('maps scrolling inside a Journey section to the ribbon timeline', () => {
+  it('maps scrolling inside a Journey section to the ribbon timeline', async () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
+    await waitForScrollObservers();
     const intro = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('#intro')!;
-    Object.defineProperties(intro, {
-      clientHeight: { configurable: true, value: 1000 },
-      scrollHeight: { configurable: true, value: 2000 },
-      scrollTop: { configurable: true, value: 500, writable: true },
-    });
 
-    intro.dispatchEvent(new Event('scroll'));
+    emitScrollProgress(intro, 0.5);
 
     expect(fixture.componentInstance.ribbonProgress()).toBeCloseTo(1 / 6);
   });
 
-  it('keeps a button-driven ribbon target stable while the previous section still scrolls', () => {
+  it('creates one synchronous Anime.js observer per stable section extent and reverts them on destroy', async () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
+    await waitForScrollObservers();
     const page = fixture.nativeElement as HTMLElement;
-    const intro = page.querySelector<HTMLElement>('#intro')!;
-    Object.defineProperties(intro, {
-      clientHeight: { configurable: true, value: 1000 },
-      scrollHeight: { configurable: true, value: 2000 },
-      scrollTop: { configurable: true, value: 800, writable: true },
+    const sections = Array.from(page.querySelectorAll<HTMLElement>('.journey-section'));
+
+    expect(vi.mocked(onScroll).mock.calls).toHaveLength(4);
+    sections.forEach((section) => {
+      const options = optionsForSection(section);
+      expect(options.target).toBe(section.querySelector('[data-journey-scroll-target]'));
+      expect(options.sync).toBe(true);
+      expect(options.enter).toBe('start start');
+      expect(options.leave).toBe('end end');
     });
 
+    fixture.destroy();
+
+    expect(scrollObservers).toHaveLength(4);
+    scrollObservers.forEach(({ revert }) => expect(revert).toHaveBeenCalledOnce());
+  });
+
+  it('does not create scroll observers if the component is destroyed before Anime.js loads', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    fixture.destroy();
+
+    await import('animejs');
+
+    expect(vi.mocked(onScroll)).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the stable assistant extent after the locked content is replaced by chat', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    await waitForScrollObservers();
+    const page = fixture.nativeElement as HTMLElement;
     page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
-    intro.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
+    fixture.detectChanges();
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-projects"]')?.click();
+    fixture.detectChanges();
+
+    page.querySelector<HTMLButtonElement>('[data-testid="unlock-assistant"]')?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrollObservers[3]?.refresh).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a button-driven ribbon target stable while the previous section scrolls', async () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    await waitForScrollObservers();
+    const page = fixture.nativeElement as HTMLElement;
+    const intro = page.querySelector<HTMLElement>('#intro')!;
+
+    page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
+    emitScrollProgress(intro, 0.8);
 
     expect(fixture.componentInstance.ribbonProgress()).toBeCloseTo(1 / 3);
   });
@@ -229,6 +315,22 @@ describe('JourneyPage', () => {
     expect(scrollCalls.at(-1)).toEqual({ behavior: 'smooth', block: 'start' });
     expect(document.activeElement).toBe(page.querySelector('#journey-title'));
     expect(page.querySelector('[data-testid="reset-journey"]')).toBeNull();
+  });
+
+  it('uses automatic fragment scrolling when reduced motion is requested', () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = (() => ({ matches: true }) as MediaQueryList);
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const projects = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('#projects')!;
+    const scrollIntoView = vi.fn();
+    projects.scrollIntoView = scrollIntoView;
+
+    fixture.componentInstance.focusFragment('projects');
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+    fixture.destroy();
+    window.matchMedia = originalMatchMedia;
   });
 
   it('returns from the chat composer to intro and ends the active chat session', async () => {
