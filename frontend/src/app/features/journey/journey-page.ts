@@ -16,11 +16,13 @@ import { HlmButtonImports } from '@spartan-ng/helm/button';
 import { HlmCardImports } from '@spartan-ng/helm/card';
 import { HlmCarouselImports } from '@spartan-ng/helm/carousel';
 import { HlmSeparatorImports } from '@spartan-ng/helm/separator';
+import type { ScrollObserver } from 'animejs';
 
 import { ValidatedContentBundle } from '../../core/content/content-validator';
 import { ChatPage } from '../chat/chat-page';
 import { ProjectCard } from '../../shared/project-card/project-card';
 import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
+import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
 
 @Component({
   selector: 'app-journey-page',
@@ -62,7 +64,7 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
         </ol>
       </nav>
       <section id="intro" #introStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="journey-title">
-        <div class="grid min-h-full content-center py-8 sm:py-12">
+        <div class="grid min-h-full content-center py-8 sm:py-12" data-journey-scroll-target>
           <div class="max-w-2xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Portfolio de Lucas Figueroa</p>
             <h1 id="journey-title" tabindex="-1" class="mt-3 max-w-[11ch] font-(--font-display) text-5xl leading-none tracking-tighter text-(--color-ink) sm:text-7xl">Un recorrido claro, sin atajos.</h1>
@@ -78,7 +80,7 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
       </section>
 
       <section id="experience" #experienceStep class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0 sm:overflow-hidden" aria-labelledby="experience-title">
-        <div class="grid h-full content-center gap-3 py-4 sm:gap-6 sm:py-10">
+        <div class="grid min-h-full content-center gap-3 py-4 sm:gap-6 sm:py-10" data-journey-scroll-target>
           <div class="max-w-3xl">
             <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Trayectoria</p>
             <h2 id="experience-title" tabindex="-1" class="mt-2  text-3xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:mt-3 sm:text-6xl">
@@ -165,7 +167,7 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
       </section>
 
       <section id="projects" class="journey-section h-svh overflow-y-auto overscroll-contain scroll-mt-0" aria-labelledby="projects-title">
-        <div class="grid min-h-full content-center gap-6 py-8 sm:gap-8 sm:py-12">
+        <div class="grid min-h-full content-center gap-6 py-8 sm:gap-8 sm:py-12" data-journey-scroll-target>
           <div class="max-w-3xl">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">Evidencia</p>
           <h2 id="projects-title" tabindex="-1" class="mt-3 text-4xl font-semibold leading-none tracking-tighter text-(--color-ink) sm:text-6xl">Proyectos en producción</h2>
@@ -225,6 +227,7 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
       </section>
 
       <section id="assistant" #journeyStep class="journey-section relative h-svh overflow-y-auto overscroll-contain scroll-mt-0 sm:overflow-hidden" aria-labelledby="assistant-title">
+        <div class="min-h-full" data-journey-scroll-target>
         @if (assistantUnlocked()) {
           <h2 id="assistant-title" class="sr-only !absolute">Asistente</h2>
           <button hlmBtn variant="outline" class="sr-only !absolute focus:not-sr-only focus:absolute focus:right-4 focus:top-4 focus:z-10 focus:min-h-11" data-testid="return-assistant" type="button" (click)="navigateToAssistant()">Volver al asistente</button>
@@ -246,6 +249,7 @@ import type { RibbonCanvasRenderer } from './ribbon-canvas-renderer';
             </div>
           </div>
         }
+        </div>
       </section>
     </main>
   `,
@@ -300,14 +304,12 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   private fragmentSubscription: Subscription | undefined;
   private initialFragmentNavigation = true;
   private sectionScrollContainers: HTMLElement[] = [];
+  private sectionScrollProgress = new Map<HTMLElement, number>();
+  private scrollObservers: ScrollObserver[] = [];
   private navigationIntent: { destinationId: string; targetProgress: number } | undefined;
   private ribbonRenderer: RibbonCanvasRenderer | undefined;
   private ribbonDestroyed = false;
   private readonly onWindowScroll = () => this.updateRibbonProgressFromScroll();
-  private readonly onSectionScroll = (event: Event) => {
-    const section = event.currentTarget as HTMLElement;
-    this.updateRibbonProgressFromSection(section);
-  };
 
   advance(nextStep: 1 | 2 | 3): void {
     if (nextStep !== this.progress() + 1) return;
@@ -322,7 +324,10 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
   unlockAssistant(): void {
     if (this.progress() !== 3) return;
     this.assistantUnlocked.set(true);
-    queueMicrotask(() => this.navigateToAssistant());
+    queueMicrotask(() => {
+      this.refreshAssistantScrollObserver();
+      this.navigateToAssistant();
+    });
   }
 
   resetJourney(): void {
@@ -330,7 +335,10 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     this.assistantUnlocked.set(false);
     this.progress.set(0);
     this.beginRibbonNavigation('intro', 0);
-    queueMicrotask(() => this.focusFragment('intro'));
+    queueMicrotask(() => {
+      this.refreshAssistantScrollObserver();
+      this.focusFragment('intro');
+    });
   }
 
   navigateToAssistant(): void {
@@ -357,10 +365,25 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     this.sectionScrollContainers = Array.from(
       this.introStep().nativeElement.parentElement?.querySelectorAll<HTMLElement>('.journey-section') ?? [],
     );
-    this.sectionScrollContainers.forEach((section) =>
-      section.addEventListener('scroll', this.onSectionScroll, { passive: true }),
-    );
-    this.updateRibbonProgressFromScroll();
+    void import('animejs').then(({ onScroll }) => {
+      if (this.ribbonDestroyed) return;
+      this.scrollObservers = this.sectionScrollContainers.flatMap((section) => {
+        const target = section.querySelector<HTMLElement>('[data-journey-scroll-target]');
+        if (!target) return [];
+        const observer = onScroll({
+          container: section,
+          target,
+          enter: 'start start',
+          leave: 'end end',
+          sync: true,
+          onUpdate: (scrollObserver) =>
+            this.updateRibbonProgressFromSection(section, scrollObserver.progress),
+        });
+        this.sectionScrollProgress.set(section, observer.progress);
+        return [observer];
+      });
+      this.updateRibbonProgressFromScroll();
+    });
     void import('./ribbon-canvas-renderer').then(({ RibbonCanvasRenderer }) => {
       if (this.ribbonDestroyed) return;
       this.ribbonRenderer = new RibbonCanvasRenderer(this.ribbonCanvas().nativeElement);
@@ -395,9 +418,9 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     this.ribbonDestroyed = true;
     window.removeEventListener('scroll', this.onWindowScroll);
     this.ribbonRenderer?.destroy();
-    this.sectionScrollContainers.forEach((section) =>
-      section.removeEventListener('scroll', this.onSectionScroll),
-    );
+    this.scrollObservers.forEach((scrollObserver) => scrollObserver.revert());
+    this.scrollObservers = [];
+    this.sectionScrollProgress.clear();
     this.observer?.disconnect();
     this.fragmentSubscription?.unsubscribe();
   }
@@ -411,22 +434,33 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
           : closest,
       undefined,
     );
-    if (activeSection) this.updateRibbonProgressFromSection(activeSection);
+    if (activeSection) {
+      this.updateRibbonProgressFromSection(
+        activeSection,
+        this.sectionScrollProgress.get(activeSection) ?? 0,
+      );
+    }
   }
 
-  private updateRibbonProgressFromSection(section: HTMLElement): void {
+  private updateRibbonProgressFromSection(section: HTMLElement, sectionProgress: number): void {
     const index = this.sectionScrollContainers.indexOf(section);
     if (index < 0) return;
+    this.sectionScrollProgress.set(section, sectionProgress);
 
     if (this.navigationIntent) {
       if (section.id !== this.navigationIntent.destinationId) return;
       this.navigationIntent = undefined;
     }
 
-    const scrollableDistance = Math.max(0, section.scrollHeight - section.clientHeight);
-    const sectionProgress = scrollableDistance ? section.scrollTop / scrollableDistance : 0;
-    const value = (index + Math.min(1, Math.max(0, sectionProgress))) / (this.journeySteps.length - 1);
-    this.setRibbonProgress(Math.min(1, value));
+    this.setRibbonProgress(
+      mapJourneyRibbonProgress(index, sectionProgress, this.sectionScrollContainers.length),
+    );
+  }
+
+  private refreshAssistantScrollObserver(): void {
+    const assistantSection = this.sectionScrollContainers.find((section) => section.id === 'assistant');
+    const target = assistantSection?.querySelector<HTMLElement>('[data-journey-scroll-target]');
+    this.scrollObservers.find((scrollObserver) => scrollObserver.target === target)?.refresh();
   }
 
   private beginRibbonNavigation(destinationId: string, targetProgress: number): void {
