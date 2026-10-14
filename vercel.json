@@ -4,5 +4,6 @@
   "installCommand": "cd frontend && npm ci",
   "buildCommand": "cd frontend && npx ng build --define __API_BASE_URL__=\"'$API_BASE_URL'\"",
   "outputDirectory": "frontend/dist/frontend/browser",
+  "crons": [{ "path": "/api/cron/supabase-restore", "schedule": "0 9 * * *" }],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
