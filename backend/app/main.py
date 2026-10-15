@@ -302,7 +302,7 @@ def create_app(
         if not service_token:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         authorization = request.headers.get("authorization", "")
-        expected = f"Bearer {service_token}".encode("utf-8")
+        expected = f"Bearer {service_token}".encode()
         supplied = authorization.encode("utf-8")
         if not hmac.compare_digest(supplied, expected):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})

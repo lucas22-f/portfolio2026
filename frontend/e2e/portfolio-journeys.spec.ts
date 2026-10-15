@@ -147,6 +147,19 @@ test('keeps the chat transcript and composer usable across mobile viewport sizes
     await page.setViewportSize(viewport);
     await unlockAssistant(page);
 
+    // Section navigation may still be smoothly scrolling after compatibility resolves.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const composer = document.querySelector<HTMLElement>('[data-testid="chat-composer"]');
+          return (
+            composer !== null &&
+            Math.abs(composer.getBoundingClientRect().bottom - window.innerHeight) <= 1
+          );
+        }),
+      )
+      .toBe(true);
+
     const initialLayout = await page.evaluate(() => {
       const composer = document.querySelector<HTMLElement>('[data-testid="chat-composer"]');
       const transcript = document.querySelector<HTMLElement>('[data-testid="chat-transcript"]');

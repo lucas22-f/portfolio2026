@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_chat_budget_ledger_rls_migration_preserves_backend_rpc_access() -> None:
@@ -39,7 +39,10 @@ def test_chat_budget_ledger_rls_migration_preserves_backend_rpc_access() -> None
             rf"revoke all on function {re.escape(signature)}\s+from public, anon, authenticated",
             budget_sql,
         )
-        assert re.search(rf"grant execute on function {re.escape(signature)}\s+to service_role", budget_sql)
+        assert re.search(
+            rf"grant execute on function {re.escape(signature)}\s+to service_role",
+            budget_sql,
+        )
 
     for function_name in (
         "reserve_chat_budget",

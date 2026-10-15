@@ -60,7 +60,7 @@ def test_extract_pdf_chunks_preserves_filename_and_one_based_page_metadata() -> 
 def test_supabase_retriever_queries_rpc_and_returns_page_citations() -> None:
     cursor = FakeCursor([("chunk-1", "Python experience", 2, "CV.pdf", 0.1)])
     retriever = SupabasePdfRetriever(
-        "configured-test-connection",
+        "postgresql://test:test@localhost/test",
         FakeEmbedder(),
         connect=lambda *args, **kwargs: FakeConnection(cursor),
     )
@@ -81,7 +81,7 @@ def test_supabase_retriever_rejects_wrong_embedding_dimensions() -> None:
             return [[0.0] for _ in texts]
 
     retriever = SupabasePdfRetriever(
-        "configured-test-connection",
+        "postgresql://test:test@localhost/test",
         WrongDimensionsEmbedder(),
         connect=lambda *args, **kwargs: FakeConnection(FakeCursor([])),
     )

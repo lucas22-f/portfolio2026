@@ -7,9 +7,9 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, ROUND_CEILING
+from decimal import ROUND_CEILING, Decimal
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, TypedDict
 
 import psycopg
 
@@ -44,8 +44,12 @@ class BudgetConfig:
             raise ValueError("monthly cap cannot exceed the approved USD 5 cap")
         if self.warning_threshold_usd > self.monthly_cap_usd:
             raise ValueError("warning threshold cannot exceed the monthly cap")
-        if (not self.input_cost_per_million.is_finite() or not self.output_cost_per_million.is_finite()
-                or self.input_cost_per_million <= 0 or self.output_cost_per_million <= 0):
+        if (
+            not self.input_cost_per_million.is_finite()
+            or not self.output_cost_per_million.is_finite()
+            or self.input_cost_per_million <= 0
+            or self.output_cost_per_million <= 0
+        ):
             raise ValueError("token prices must be finite and positive")
         if min(self.max_input_tokens, self.max_output_tokens) <= 0:
             raise ValueError("token limits must be positive")
@@ -58,10 +62,14 @@ class BudgetConfig:
             input_price = Decimal(input_value or str(GPT5_MINI_INPUT))
             output_price = Decimal(output_value or str(GPT5_MINI_OUTPUT))
             if input_price < GPT5_MINI_INPUT or output_price < GPT5_MINI_OUTPUT:
-                raise ValueError("gpt-5-mini token prices cannot be configured below published rates")
+                raise ValueError(
+                    "gpt-5-mini token prices cannot be configured below published rates"
+                )
         else:
             if input_value is None or output_value is None:
-                raise ValueError("token price environment variables are required for a model override")
+                raise ValueError(
+                    "token price environment variables are required for a model override"
+                )
             input_price, output_price = Decimal(input_value), Decimal(output_value)
         return cls(
             monthly_cap_usd=Decimal(env.get("CHAT_MONTHLY_BUDGET_USD", "5")),
@@ -123,12 +131,16 @@ class PostgresChatBudgetStore:
         self._database_url = database_url
         self._config = config
 
-    def _call(self, statement: str, params: tuple[object, ...]):
+    def _call(
+        self, statement: str, params: tuple[object, ...]
+    ) -> tuple[object, ...] | None:
         try:
-            with psycopg.connect(self._database_url, connect_timeout=5) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(statement, params)
-                    return cursor.fetchone()
+            with (
+                psycopg.connect(self._database_url, connect_timeout=5) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute(statement, params)
+                return cursor.fetchone()
         except Exception as error:
             raise BudgetStoreUnavailable("shared chat budget database unavailable") from error
 
@@ -153,7 +165,7 @@ class PostgresChatBudgetStore:
         )
         if not row or len(row) != 3 or any(not isinstance(value, bool) for value in row):
             raise BudgetStoreUnavailable("shared chat budget settlement outcome unknown")
-        return row[0], row[1], row[2]
+        return bool(row[0]), bool(row[1]), bool(row[2])
 
     def release(self, reservation_id: str) -> bool:
         row = self._call("SELECT app.release_chat_budget(%s)", (uuid.UUID(reservation_id),))
@@ -167,13 +179,18 @@ class PostgresChatBudgetStore:
             raise BudgetStoreUnavailable("shared chat budget retention outcome unknown")
 
 
+class _MonthState(TypedDict):
+    spent: Decimal
+    warning: bool
+
+
 class InMemoryChatBudgetStore:
     """Deterministic store for isolated tests; never selected by production startup."""
 
     def __init__(self, cap: Decimal, warning: Decimal) -> None:
         self._cap, self._warning = cap, warning
         self._lock = threading.Lock()
-        self._months: dict[datetime, dict[str, object]] = {}
+        self._months: dict[datetime, _MonthState] = {}
         self._reservations: dict[str, tuple[datetime, Decimal, str]] = {}
         self._over_reserved_reservations: set[str] = set()
 
@@ -194,7 +211,7 @@ class InMemoryChatBudgetStore:
                 value for period, value, status in self._reservations.values()
                 if period == month and status in {"reserved", "retained"}
             )
-            if Decimal(state["spent"]) + reserved + amount > self._cap:
+            if state["spent"] + reserved + amount > self._cap:
                 return BudgetDecision.CAP_REACHED
             self._reservations[reservation_id] = (month, amount, "reserved")
             return BudgetDecision.ACCEPTED
@@ -213,9 +230,9 @@ class InMemoryChatBudgetStore:
             if over_reservation:
                 self._over_reserved_reservations.add(reservation_id)
             state = self._months[month]
-            state["spent"] = Decimal(state["spent"]) + actual
-            warning = not bool(state["warning"]) and Decimal(state["spent"]) >= self._warning
-            state["warning"] = bool(state["warning"]) or warning
+            state["spent"] += actual
+            warning = not state["warning"] and state["spent"] >= self._warning
+            state["warning"] = state["warning"] or warning
             self._reservations[reservation_id] = (month, reservation, "settled")
             return True, warning, over_reservation
 

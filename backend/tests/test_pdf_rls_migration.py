@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_pdf_rls_migration_is_backend_only_and_idempotent() -> None:
