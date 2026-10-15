@@ -28,8 +28,8 @@ describe('ChatPage', () => {
     );
     expect(gate?.getAttribute('role')).toBe('dialog');
     expect(gate?.getAttribute('aria-modal')).toBe('true');
-    expect(gate?.textContent).toContain('El servicio se está iniciando');
-    expect(gate?.textContent).toContain('alrededor de un minuto');
+    expect(gate?.textContent).toContain('Verificando la disponibilidad del chat');
+    expect(gate?.textContent).toContain('Después de un período sin actividad');
     expect(gate?.querySelector('hlm-spinner')).not.toBeNull();
     expect(document.activeElement).toBe(gate);
     expect(
@@ -70,10 +70,18 @@ describe('ChatPage', () => {
     vi.useRealTimers();
   });
 
-  it('surfaces the unavailable state after bounded compatibility retries', async () => {
+  it('allows retry after transient compatibility exhaustion and recovers on success', async () => {
     vi.useFakeTimers();
+    let attempts = 0;
+    let resolveRecovery: ((result: 'compatible') => void) | undefined;
     const client = {
-      checkCompatibility: vi.fn().mockResolvedValue('transient'),
+      checkCompatibility: vi.fn(() => {
+        attempts += 1;
+        if (attempts <= 6) return Promise.resolve('transient' as const);
+        return new Promise<'compatible'>((resolve) => {
+          resolveRecovery = resolve;
+        });
+      }),
       stream: async () => undefined,
     };
     await TestBed.configureTestingModule({
@@ -90,6 +98,34 @@ describe('ChatPage', () => {
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent,
     ).toContain('chat no está disponible temporalmente');
+    const retryButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="retry-compatibility"]',
+    );
+    expect(retryButton?.textContent).toContain('Reintentar');
+
+    retryButton?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(client.checkCompatibility).toHaveBeenCalledTimes(7);
+    expect(fixture.componentInstance.compatibilityPending()).toBe(true);
+    const gate = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[data-testid="compatibility-gate"]',
+    );
+    expect(document.activeElement).toBe(gate);
+    resolveRecovery?.('compatible');
+    await waitForCompatibility(fixture);
+
+    expect(fixture.componentInstance.compatible()).toBe(true);
+    expect(fixture.componentInstance.compatibilityPending()).toBe(false);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="compatibility-gate"]'),
+    ).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('textarea')?.disabled).toBe(false);
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('[data-testid="chat-heading"]'),
+    );
     fixture.destroy();
     vi.useRealTimers();
   });
@@ -111,6 +147,9 @@ describe('ChatPage', () => {
     expect(
       (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent,
     ).toContain('chat no está disponible temporalmente');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="retry-compatibility"]'),
+    ).toBeNull();
   });
 
   it('focuses its accessible entry heading only when focusOnEntry is requested', async () => {

@@ -13,10 +13,15 @@ from urllib.request import Request, urlopen
 
 import fitz  # type: ignore[import-untyped]
 import psycopg
+from psycopg.conninfo import make_conninfo
 
 
 class PdfRetrievalError(RuntimeError):
     """Raised when the local index or embeddings cannot be used safely."""
+
+
+class PdfRetrievalTransientError(PdfRetrievalError):
+    """Raised when Supabase cannot be reached during retriever initialization."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +149,10 @@ class SupabasePdfRetriever:
             or max_relevant_distance <= 0
         ):
             raise ValueError("Supabase PDF retrieval configuration is invalid")
+        try:
+            make_conninfo(database_url)
+        except psycopg.ProgrammingError as error:
+            raise ValueError("Supabase PDF retrieval configuration is invalid") from error
         self._database_url = database_url
         self._embedder = embedder
         self._embedding_model = embedding_model
@@ -168,6 +177,12 @@ class SupabasePdfRetriever:
                     (self._embedding_model, self._DIMENSIONS),
                 )
                 row = cursor.fetchone()
+        except psycopg.OperationalError as error:
+            if error.sqlstate is None or error.sqlstate.startswith("08"):
+                raise PdfRetrievalTransientError(
+                    "Supabase PDF retrieval is temporarily unavailable"
+                ) from error
+            raise PdfRetrievalError("Supabase PDF retrieval is unavailable") from error
         except Exception as error:
             raise PdfRetrievalError("Supabase PDF retrieval is unavailable") from error
         if not row or not isinstance(row[0], str):

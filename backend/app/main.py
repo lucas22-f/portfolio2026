@@ -14,6 +14,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Literal
 
 from fastapi import FastAPI, Request
@@ -57,6 +58,7 @@ from app.infrastructure.contact_delivery import BrevoContactDelivery, ContactDel
 from app.infrastructure.pdf_rag import (
     OpenAIEmbedder,
     PdfRetrievalError,
+    PdfRetrievalTransientError,
     PdfRetriever,
     SupabasePdfRetriever,
 )
@@ -72,6 +74,7 @@ _PROVIDER_MESSAGES = {
     "invalid-provider-output": ("No pude validar la respuesta.", False),
 }
 _NO_PORTFOLIO_RESULTS_MESSAGE = "No encontré información del portfolio sobre ese tema."
+_RETRIEVER_RECOVERY_COOLDOWN_SECONDS = 5.0
 logger = logging.getLogger(__name__)
 _STARTUP_STAGES = frozenset(
     {
@@ -201,10 +204,13 @@ def create_app(
     service_token: str | None = None,
     budget_store: ChatBudgetStore | None = None,
     budget_config: BudgetConfig | None = None,
+    retriever_factory: Callable[[], PdfRetriever] | None = None,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
     is_ready = ready if ready is not None else retriever is not None and provider is not None
+    retriever_recovery_lock = Lock()
+    last_retriever_attempt: float | None = None
     admission_guard = chat_admission or ChatAdmissionGuard()
     effective_budget = budget_config or BudgetConfig()
     shared_budget: ChatBudgetStore = budget_store or UnavailableChatBudgetStore()
@@ -213,6 +219,46 @@ def create_app(
     compatibility_version = content_version or (
         retriever.content_version if retriever else "unavailable"
     )
+
+    async def check_readiness() -> bool:
+        nonlocal is_ready, last_retriever_attempt, retriever, retriever_factory
+        if is_ready and retriever is not None and provider is not None:
+            return True
+        if retriever_factory is None or provider is None:
+            return False
+        if not retriever_recovery_lock.acquire(blocking=False):
+            return False
+        try:
+            if is_ready and retriever is not None and provider is not None:
+                return True
+            now = time.monotonic()
+            if (
+                last_retriever_attempt is not None
+                and now - last_retriever_attempt < _RETRIEVER_RECOVERY_COOLDOWN_SECONDS
+            ):
+                return False
+            last_retriever_attempt = now
+            try:
+                retriever = await run_in_threadpool(retriever_factory)
+            except PdfRetrievalTransientError as error:
+                logger.warning(
+                    "readiness_recovery_failed stage=retriever error_type=%s",
+                    type(error).__name__,
+                )
+                return False
+            except Exception as error:
+                retriever_factory = None
+                logger.error(
+                    "readiness_recovery_failed stage=retriever error_type=%s",
+                    type(error).__name__,
+                )
+                return False
+            is_ready = True
+            retriever_factory = None
+            return True
+        finally:
+            retriever_recovery_lock.release()
+
     app = FastAPI(title="Portfolio API", version=app_version, debug=debug)
     app.add_middleware(
         CORSMiddleware,
@@ -225,7 +271,7 @@ def create_app(
 
     @app.get("/health", tags=["system"])
     async def health():  # type: ignore[no-untyped-def]
-        if not is_ready or retriever is None or provider is None:
+        if not await check_readiness():
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         return {
             "status": "ok",
@@ -236,7 +282,7 @@ def create_app(
     @app.get("/api/v1/metadata", tags=["system"])
     @app.get("/metadata", tags=["system"], include_in_schema=False)
     async def metadata():  # type: ignore[no-untyped-def]
-        if not is_ready or retriever is None or provider is None:
+        if not await check_readiness():
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         payload: dict[str, object] = {
             "app_version": app_version,
@@ -743,6 +789,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
     """Build production dependencies without making an OpenAI request at startup."""
 
     stage = "chat_admission"
+    recover_retriever: Callable[[], PdfRetriever] | None = None
     try:
         chat_admission = ChatAdmissionGuard.from_environment(os.environ)
         stage = "service_token"
@@ -766,13 +813,27 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         provider = OpenAIChatProvider(api_key=api_key, limits=limits)
         embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
         stage = "retriever"
-        retriever = SupabasePdfRetriever(
-            os.environ["SUPABASE_DB_URL"],
-            OpenAIEmbedder(api_key, model=embedding_model),
-            embedding_model=embedding_model,
-        )
+        database_url = os.environ["SUPABASE_DB_URL"]
+
+        def build_retriever() -> PdfRetriever:
+            return SupabasePdfRetriever(
+                database_url,
+                OpenAIEmbedder(api_key, model=embedding_model),
+                embedding_model=embedding_model,
+            )
+
+        try:
+            retriever = build_retriever()
+        except PdfRetrievalTransientError as error:
+            logger.error(
+                "startup_readiness_failed stage=%s error_type=%s",
+                stage,
+                type(error).__name__,
+            )
+            retriever = None
+            recover_retriever = build_retriever
         stage = "budget_store"
-        budget_store = PostgresChatBudgetStore(os.environ["SUPABASE_DB_URL"], budget_config)
+        budget_store = PostgresChatBudgetStore(database_url, budget_config)
     except (KeyError, OSError, ValueError, PdfRetrievalError) as error:
         if stage in _STARTUP_STAGES:
             logger.error(
@@ -818,6 +879,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         service_token=service_token,
         budget_store=budget_store,
         budget_config=budget_config,
+        retriever_factory=recover_retriever,
     )
 
 

@@ -136,6 +136,17 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
             @if (compatible() === false) {
               <section class="border-l-4 border-primary bg-card p-4" role="alert">
                 <p class="m-0">El chat no está disponible temporalmente.</p>
+                @if (compatibilityRetryAvailable()) {
+                  <button
+                    hlmBtn
+                    class="mt-3 min-h-11"
+                    data-testid="retry-compatibility"
+                    type="button"
+                    (click)="retryCompatibility()"
+                  >
+                    Reintentar
+                  </button>
+                }
               </section>
             } @else if (state().status === 'error' || state().status === 'refused') {
               <section
@@ -307,17 +318,17 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
             class="grid w-full max-w-sm gap-4 rounded-xl border border-border bg-card p-5 shadow-sm"
           >
             <div class="flex items-start gap-3">
-              <hlm-spinner aria-label="El servicio se está iniciando" />
+              <hlm-spinner aria-label="Verificando la disponibilidad del chat" />
               <div class="grid gap-2">
                 <h4 id="compatibility-gate-title" class="m-0 text-lg font-semibold text-foreground">
-                  El servicio se está iniciando
+                  Verificando la disponibilidad del chat
                 </h4>
                 <p
                   id="compatibility-gate-description"
                   class="m-0 text-sm leading-relaxed text-muted-foreground"
                 >
-                  Puede demorar alrededor de un minuto después de un período sin actividad. Esperá
-                  un momento mientras verificamos la disponibilidad.
+                  Después de un período sin actividad, la conexión puede tardar un poco en estar
+                  disponible. Esperá un momento mientras volvemos a comprobarla.
                 </p>
                 <button
                   hlmBtn
@@ -351,6 +362,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   readonly completedTurns = signal<ChatTurn[]>([]);
   readonly compatible = signal<boolean | undefined>(undefined);
   readonly compatibilityPending = signal(true);
+  readonly compatibilityRetryAvailable = signal(false);
   message = '';
   activeMessage = '';
   private lastMessage = '';
@@ -453,12 +465,14 @@ export class ChatPage implements AfterViewInit, OnDestroy {
     if (this.destroyed) return;
     if (result !== 'transient') {
       this.compatible.set(result === 'compatible');
+      this.compatibilityRetryAvailable.set(false);
       this.compatibilityPending.set(false);
       this.restoreFocusAfterCompatibility();
       return;
     }
     if (this.compatibilityAttempt >= COMPATIBILITY_MAX_ATTEMPTS) {
       this.compatible.set(false);
+      this.compatibilityRetryAvailable.set(true);
       this.compatibilityPending.set(false);
       this.restoreFocusAfterCompatibility();
       return;
@@ -542,6 +556,26 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   retry(): Promise<void> {
     this.message = this.lastMessage;
     return this.submit(true);
+  }
+
+  retryCompatibility(): void {
+    if (!this.compatibilityRetryAvailable() || this.compatibilityPending()) return;
+    if (this.compatibilityRetryTimer !== undefined) {
+      clearTimeout(this.compatibilityRetryTimer);
+      this.compatibilityRetryTimer = undefined;
+    }
+    this.compatibilityAttempt = 0;
+    this.compatibilityRetryAvailable.set(false);
+    this.compatible.set(undefined);
+    this.compatibilityPending.set(true);
+    afterNextRender(
+      () => {
+        if (this.destroyed) return;
+        this.compatibilityGate()?.nativeElement.focus();
+        void this.loadCompatibility();
+      },
+      { injector: this.injector },
+    );
   }
 
   private restoreFocusAfterCompatibility(): void {
