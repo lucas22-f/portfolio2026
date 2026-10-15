@@ -73,8 +73,18 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
                 <p class="m-0 text-lg leading-relaxed text-(--color-text) sm:text-xl">{{ claim.text }}</p>
               }
             </div>
-            <p class="mt-5 text-sm font-medium text-(--color-text)">Elegí el botón para seguir el recorrido:</p>
-            <button hlmBtn class="mt-2 min-h-11 cursor-pointer border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none" data-testid="continue-intro" type="button" (click)="advance(1)">Ver trayectoria <span aria-hidden="true">→</span></button>
+            <div class="mt-8 flex w-full flex-col items-center gap-2 sm:mt-6 sm:flex-row sm:gap-3" data-testid="journey-signpost">
+              <div role="note" class="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 rounded-md border border-primary/30 border-l-4 border-l-primary bg-primary/5 px-3 py-2.5 text-(--color-text) sm:w-auto sm:flex-1">
+                <span aria-hidden="true" data-testid="journey-stop-number" class="grid size-8 shrink-0 place-items-center rounded-full bg-primary font-mono text-xs font-bold tabular-nums text-primary-foreground">01</span>
+                <div class="min-w-0">
+                  <p class="m-0 text-[0.65rem] font-bold uppercase tracking-[0.12em] text-primary">Siguiente parada</p>
+                  <p class="m-0 text-xs leading-snug text-(--color-text)">Elegí el botón para seguir el recorrido.</p>
+                </div>
+              </div>
+              <span aria-hidden="true" data-testid="journey-direction-mobile" class="text-xl font-bold leading-none text-primary sm:hidden">↓</span>
+              <span aria-hidden="true" data-testid="journey-direction-wide" class="hidden text-xl font-bold leading-none text-primary sm:inline">→</span>
+              <button hlmBtn class="min-h-11 w-full cursor-pointer justify-center border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none sm:w-fit" data-testid="continue-intro" type="button" (click)="advance(1)">Ver trayectoria <span aria-hidden="true">→</span></button>
+            </div>
           </div>
         </div>
       </section>
@@ -158,10 +168,20 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
           </div>
 
           @if (progress() >= 1) {
-            <p class="text-sm font-medium text-(--color-text)">Elegí el botón para seguir el recorrido:</p>
-            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none" data-testid="continue-experience" type="button" (click)="advance(2)">
-              Ver proyectos <span aria-hidden="true">→</span>
-            </button>
+            <div class="flex w-full flex-col items-center gap-2 sm:flex-row sm:gap-3" data-testid="journey-signpost">
+              <div role="note" class="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 rounded-md border border-primary/30 border-l-4 border-l-primary bg-primary/5 px-3 py-2.5 text-(--color-text) sm:w-auto sm:flex-1">
+                <span aria-hidden="true" data-testid="journey-stop-number" class="grid size-8 shrink-0 place-items-center rounded-full bg-primary font-mono text-xs font-bold tabular-nums text-primary-foreground">02</span>
+                <div class="min-w-0">
+                  <p class="m-0 text-[0.65rem] font-bold uppercase tracking-[0.12em] text-primary">Siguiente parada</p>
+                  <p class="m-0 text-xs leading-snug text-(--color-text)">Elegí el botón para seguir el recorrido.</p>
+                </div>
+              </div>
+              <span aria-hidden="true" data-testid="journey-direction-mobile" class="text-xl font-bold leading-none text-primary sm:hidden">↓</span>
+              <span aria-hidden="true" data-testid="journey-direction-wide" class="hidden text-xl font-bold leading-none text-primary sm:inline">→</span>
+              <button hlmBtn class="min-h-11 w-full cursor-pointer justify-center border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none sm:w-fit" data-testid="continue-experience" type="button" (click)="advance(2)">
+                Ver proyectos <span aria-hidden="true">→</span>
+              </button>
+            </div>
           }
         </div>
       </section>
@@ -218,10 +238,20 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
           </div>
         </hlm-carousel>
           @if (progress() >= 2) {
-            <p class="text-sm font-medium text-(--color-text)">Elegí el botón para seguir el recorrido:</p>
-            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none" data-testid="continue-projects" type="button" (click)="advance(3)">
-              Continuar al asistente <span aria-hidden="true">→</span>
-            </button>
+            <div class="flex w-full flex-col items-center gap-2 sm:flex-row sm:gap-3" data-testid="journey-signpost">
+              <div role="note" class="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 rounded-md border border-primary/30 border-l-4 border-l-primary bg-primary/5 px-3 py-2.5 text-(--color-text) sm:w-auto sm:flex-1">
+                <span aria-hidden="true" data-testid="journey-stop-number" class="grid size-8 shrink-0 place-items-center rounded-full bg-primary font-mono text-xs font-bold tabular-nums text-primary-foreground">03</span>
+                <div class="min-w-0">
+                  <p class="m-0 text-[0.65rem] font-bold uppercase tracking-[0.12em] text-primary">Siguiente parada</p>
+                  <p class="m-0 text-xs leading-snug text-(--color-text)">Elegí el botón para seguir el recorrido.</p>
+                </div>
+              </div>
+              <span aria-hidden="true" data-testid="journey-direction-mobile" class="text-xl font-bold leading-none text-primary sm:hidden">↓</span>
+              <span aria-hidden="true" data-testid="journey-direction-wide" class="hidden text-xl font-bold leading-none text-primary sm:inline">→</span>
+              <button hlmBtn class="min-h-11 w-full cursor-pointer justify-center border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none sm:w-fit" data-testid="continue-projects" type="button" (click)="advance(3)">
+                Continuar al asistente <span aria-hidden="true">→</span>
+              </button>
+            </div>
           }
         </div>
       </section>

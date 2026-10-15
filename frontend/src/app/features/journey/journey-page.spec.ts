@@ -89,32 +89,41 @@ describe('JourneyPage', () => {
     expect(page.querySelector('#assistant')?.classList.contains('sm:overflow-hidden')).toBe(true);
   });
 
-  it('shows the journey instruction and emphasizes each guided CTA', () => {
+  it('shows each next-stop signpost and emphasizes its guided CTA', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
 
-    const instructionCount = () =>
-      Array.from(page.querySelectorAll<HTMLElement>('p')).filter(
-        (item) => item.textContent?.trim() === 'Elegí el botón para seguir el recorrido:',
-      ).length;
-    const expectEmphasizedTouchTarget = (testId: string) => {
+    const expectSignpost = (testId: string, stop: string, label: string) => {
       const button = page.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)!;
+      const signpost = button.closest<HTMLElement>('[data-testid="journey-signpost"]');
+      expect(signpost).not.toBeNull();
+      if (!signpost) return button;
+
+      const note = signpost.querySelector<HTMLElement>('[role="note"]');
+      expect(note?.textContent).toContain('Siguiente parada');
+      expect(note?.textContent).toContain('Elegí el botón para seguir el recorrido.');
+      expect(signpost.querySelector('[data-testid="journey-stop-number"]')?.textContent).toBe(stop);
+      expect(signpost.querySelector('[data-testid="journey-stop-number"]')?.getAttribute('aria-hidden')).toBe('true');
+      expect(signpost.querySelector('[data-testid="journey-direction-mobile"]')?.getAttribute('aria-hidden')).toBe('true');
+      expect(signpost.querySelector('[data-testid="journey-direction-mobile"]')?.classList.contains('sm:hidden')).toBe(true);
+      expect(signpost.querySelector('[data-testid="journey-direction-wide"]')?.getAttribute('aria-hidden')).toBe('true');
+      expect(signpost.querySelector('[data-testid="journey-direction-wide"]')?.classList.contains('sm:inline')).toBe(true);
+      expect(signpost.classList.contains('flex-col')).toBe(true);
+      expect(signpost.classList.contains('sm:flex-row')).toBe(true);
+      expect(button.textContent).toContain(label);
       expect(button.classList.contains('border-2')).toBe(true);
       expect(button.classList.contains('shadow-md')).toBe(true);
       expect(button.classList.contains('min-h-11')).toBe(true);
+      expect(button.classList.contains('focus-visible:outline-2')).toBe(true);
+      return button;
     };
 
-    expect(instructionCount()).toBe(1);
-    expectEmphasizedTouchTarget('continue-intro');
-    page.querySelector<HTMLButtonElement>('[data-testid="continue-intro"]')?.click();
+    expectSignpost('continue-intro', '01', 'Ver trayectoria').click();
     fixture.detectChanges();
-    expect(instructionCount()).toBe(2);
-    expectEmphasizedTouchTarget('continue-experience');
-    page.querySelector<HTMLButtonElement>('[data-testid="continue-experience"]')?.click();
+    expectSignpost('continue-experience', '02', 'Ver proyectos').click();
     fixture.detectChanges();
-    expect(instructionCount()).toBe(3);
-    expectEmphasizedTouchTarget('continue-projects');
+    expectSignpost('continue-projects', '03', 'Continuar al asistente');
   });
 
   it('renders a decorative Canvas ribbon without an SVG path binding loop', () => {
