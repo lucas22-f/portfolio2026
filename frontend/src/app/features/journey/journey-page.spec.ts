@@ -89,14 +89,14 @@ describe('JourneyPage', () => {
     expect(page.querySelector('#assistant')?.classList.contains('sm:overflow-hidden')).toBe(true);
   });
 
-  it('shows the mobile continue instruction and emphasizes each guided CTA', () => {
+  it('shows the journey instruction and emphasizes each guided CTA', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
     const page = fixture.nativeElement as HTMLElement;
 
     const instructionCount = () =>
       Array.from(page.querySelectorAll<HTMLElement>('p')).filter(
-        (item) => item.textContent?.trim() === 'Presioná el botón para continuar el recorrido.',
+        (item) => item.textContent?.trim() === 'Elegí el botón para seguir el recorrido:',
       ).length;
     const expectEmphasizedTouchTarget = (testId: string) => {
       const button = page.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)!;
