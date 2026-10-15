@@ -19,6 +19,15 @@ class FakeRetriever:
         return []
 
 
+def configure_default_startup_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5-mini")
+    monkeypatch.setenv("OPENAI_INPUT_COST_PER_MILLION", "0.25")
+    monkeypatch.setenv("OPENAI_OUTPUT_COST_PER_MILLION", "2.00")
+    monkeypatch.setenv("CHAT_MONTHLY_BUDGET_USD", "5")
+    monkeypatch.setenv("CHAT_MONTHLY_WARNING_USD", "3")
+    monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+
 def test_health_reports_initialized_application_versions() -> None:
     response = TestClient(
         create_app(
@@ -40,6 +49,7 @@ def test_health_reports_initialized_application_versions() -> None:
 def test_missing_supabase_configuration_stays_unavailable_with_safe_log(
     monkeypatch, caplog
 ) -> None:
+    configure_default_startup_environment(monkeypatch)
     monkeypatch.setattr(main.ChatAdmissionGuard, "from_environment", lambda environ: object())
     monkeypatch.setenv("CHAT_SERVICE_TOKEN", "sensitive-service-token")
     monkeypatch.setenv("OPENAI_API_KEY", "sensitive-openai-key")
@@ -74,6 +84,7 @@ def test_missing_startup_configuration_logs_stage_without_sensitive_values(
 def test_retriever_startup_failure_logs_safe_diagnostic_and_stays_unready(
     monkeypatch, caplog
 ) -> None:
+    configure_default_startup_environment(monkeypatch)
     monkeypatch.setattr(main.ChatAdmissionGuard, "from_environment", lambda environ: object())
     monkeypatch.setenv("CHAT_SERVICE_TOKEN", "sensitive-service-token")
     monkeypatch.setenv("OPENAI_API_KEY", "sensitive-openai-key")
@@ -120,6 +131,7 @@ def test_supabase_connection_failure_is_typed_as_transient() -> None:
 def test_transient_retriever_startup_failure_recovers_on_readiness_poll(
     monkeypatch, caplog, readiness_path: str
 ) -> None:
+    configure_default_startup_environment(monkeypatch)
     monkeypatch.setattr(main.ChatAdmissionGuard, "from_environment", lambda environ: object())
     monkeypatch.setenv("CHAT_SERVICE_TOKEN", "sensitive-service-token")
     monkeypatch.setenv("OPENAI_API_KEY", "sensitive-openai-key")
