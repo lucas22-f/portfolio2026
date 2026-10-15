@@ -73,8 +73,8 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
                 <p class="m-0 text-lg leading-relaxed text-(--color-text) sm:text-xl">{{ claim.text }}</p>
               }
             </div>
-            <p class="mt-5 text-sm font-medium text-(--color-text) sm:hidden">Presioná el botón para continuar el recorrido.</p>
-            <button hlmBtn class="mt-2 min-h-11 cursor-pointer border-2 border-primary shadow-md shadow-primary/20 focus-visible:ring-4 focus-visible:ring-primary/40" data-testid="continue-intro" type="button" (click)="advance(1)">Continuar</button>
+            <p class="mt-5 text-sm font-medium text-(--color-text)">Elegí el botón para seguir el recorrido:</p>
+            <button hlmBtn class="mt-2 min-h-11 cursor-pointer border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none" data-testid="continue-intro" type="button" (click)="advance(1)">Ver trayectoria <span aria-hidden="true">→</span></button>
           </div>
         </div>
       </section>
@@ -158,9 +158,9 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
           </div>
 
           @if (progress() >= 1) {
-            <p class="text-sm font-medium text-(--color-text) sm:hidden">Presioná el botón para continuar el recorrido.</p>
-            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 focus-visible:ring-4 focus-visible:ring-primary/40" data-testid="continue-experience" type="button" (click)="advance(2)">
-              Ver proyectos
+            <p class="text-sm font-medium text-(--color-text)">Elegí el botón para seguir el recorrido:</p>
+            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none" data-testid="continue-experience" type="button" (click)="advance(2)">
+              Ver proyectos <span aria-hidden="true">→</span>
             </button>
           }
         </div>
@@ -218,9 +218,9 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
           </div>
         </hlm-carousel>
           @if (progress() >= 2) {
-            <p class="text-sm font-medium text-(--color-text) sm:hidden">Presioná el botón para continuar el recorrido.</p>
-            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 focus-visible:ring-4 focus-visible:ring-primary/40" data-testid="continue-projects" type="button" (click)="advance(3)">
-              Continuar
+            <p class="text-sm font-medium text-(--color-text)">Elegí el botón para seguir el recorrido:</p>
+            <button hlmBtn class="min-h-11 w-fit cursor-pointer border-2 border-primary shadow-md shadow-primary/20 hover:brightness-110 hover:shadow-lg focus-visible:ring-4 focus-visible:ring-primary/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none" data-testid="continue-projects" type="button" (click)="advance(3)">
+              Continuar al asistente <span aria-hidden="true">→</span>
             </button>
           }
         </div>
