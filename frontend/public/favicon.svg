@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Lucas Figueroa</title>
+  <rect width="64" height="64" rx="15" fill="#080c16"/>
+  <path d="M13 14h8v28h14v8H13z" fill="#14b88a"/>
+  <path d="M38 14h14v7h-6v6h6v7h-6v16h-8z" fill="#f1f5f9"/>
+</svg>
