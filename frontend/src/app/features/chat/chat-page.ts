@@ -19,6 +19,7 @@ import { HlmSpinnerImports } from '@spartan-ng/helm/spinner';
 
 import {
   ChatClient,
+  ChatEvent,
   ChatState,
   ChatStreamError,
   SourcePart,
@@ -31,6 +32,8 @@ type ChatTurn = { message: string; state: ChatState };
 
 const COMPATIBILITY_RETRY_DELAY_MS = 10_000;
 const COMPATIBILITY_MAX_ATTEMPTS = 6;
+const TYPEWRITER_CHARACTERS_PER_SECOND = 56;
+const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
 
 @Component({
   selector: 'app-chat-page',
@@ -60,7 +63,8 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
             Chat informativo
           </h3>
           <p class="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Preguntá sobre experiencia, formación, habilidades y proyectos publicados.
+            Soy el asistente del portfolio de Lucas. Preguntá por sus proyectos, experiencia,
+            formación o habilidades, y te ayudo a encontrar la información o el contacto disponible.
           </p>
         </header>
 
@@ -183,70 +187,74 @@ const COMPATIBILITY_MAX_ATTEMPTS = 6;
                 Escribí una consulta para iniciar la conversación.
               </p>
             }
-            @if (state().streamedText) {
+            @if (
+              state().status === 'streaming' &&
+              (state().streamedText || state().parts.length)
+            ) {
               <article
                 data-testid="streaming-assistant-text"
                 class="chat-streaming-bubble grid gap-2 rounded-2xl rounded-bl-sm border border-border bg-card p-4 sm:p-5"
                 aria-label="Respuesta en progreso"
-                aria-live="polite"
-                aria-atomic="false"
+                aria-live="off"
               >
                 <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">
                   Respuesta en progreso
                 </p>
                 <p class="chat-streaming-text m-0 leading-relaxed">
-                  {{ state().streamedText
+                  {{ streamedPreview()
                   }}<span class="chat-stream-caret" aria-hidden="true"></span>
                 </p>
               </article>
             }
-            @for (part of state().parts; track $index) {
-              @switch (part.type) {
-                @case ('text') {
-                  <article
-                    class="grid gap-2 rounded-2xl rounded-bl-sm border border-border bg-card p-4 sm:p-5"
-                    [attr.aria-label]="
-                      part.grounding === 'general'
-                        ? 'Respuesta general'
-                        : 'Respuesta basada en el portfolio'
-                    "
-                  >
-                    <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">
-                      {{
+            @if (state().status !== 'streaming') {
+              @for (part of state().parts; track $index) {
+                @switch (part.type) {
+                  @case ('text') {
+                    <article
+                      class="grid gap-2 rounded-2xl rounded-bl-sm border border-border bg-card p-4 sm:p-5"
+                      [attr.aria-label]="
                         part.grounding === 'general'
                           ? 'Respuesta general'
-                          : 'Basada en el portfolio'
-                      }}
-                    </p>
-                    <p class="m-0 leading-relaxed">{{ part.text }}</p>
-                    @if (part.grounding === 'portfolio' && sourcesFollowing($index).length) {
-                      <section
-                        data-testid="chat-sources"
-                        class="mt-1 border-t border-border pt-3"
-                        [attr.aria-labelledby]="'chat-sources-heading-' + $index"
-                      >
-                        <h4
-                          [id]="'chat-sources-heading-' + $index"
-                          class="m-0 text-sm font-semibold text-[var(--color-heading)]"
+                          : 'Respuesta basada en el portfolio'
+                      "
+                    >
+                      <p class="m-0 text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                        {{
+                          part.grounding === 'general'
+                            ? 'Respuesta general'
+                            : 'Basada en el portfolio'
+                        }}
+                      </p>
+                      <p class="m-0 leading-relaxed">{{ part.text }}</p>
+                      @if (part.grounding === 'portfolio' && sourcesFollowing($index).length) {
+                        <section
+                          data-testid="chat-sources"
+                          class="mt-1 border-t border-border pt-3"
+                          [attr.aria-labelledby]="'chat-sources-heading-' + $index"
                         >
-                          Fuentes consultadas
-                        </h4>
-                        <ul class="mt-2 grid gap-1 pl-5 text-sm text-muted-foreground">
-                          @for (
-                            source of sourcesFollowing($index);
-                            track source.filename + source.page
-                          ) {
-                            <li>{{ source.filename }}, página {{ source.page }}</li>
-                          }
-                        </ul>
-                      </section>
+                          <h4
+                            [id]="'chat-sources-heading-' + $index"
+                            class="m-0 text-sm font-semibold text-[var(--color-heading)]"
+                          >
+                            Fuentes consultadas
+                          </h4>
+                          <ul class="mt-2 grid gap-1 pl-5 text-sm text-muted-foreground">
+                            @for (
+                              source of sourcesFollowing($index);
+                              track source.filename + source.page
+                            ) {
+                              <li>{{ source.filename }}, página {{ source.page }}</li>
+                            }
+                          </ul>
+                        </section>
+                      }
+                    </article>
+                  }
+                  @case ('source') {}
+                  @case ('interview_contact_form') {
+                    @if (state().status === 'complete') {
+                      <app-interview-contact-form class="chat-contact-part" [part]="part" />
                     }
-                  </article>
-                }
-                @case ('source') {}
-                @case ('interview_contact_form') {
-                  @if (state().status === 'complete') {
-                    <app-interview-contact-form class="chat-contact-part" [part]="part" />
                   }
                 }
               }
@@ -359,6 +367,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   private readonly transcriptRef = viewChild<ElementRef<HTMLElement>>('transcript');
   private readonly compatibilityGate = viewChild<ElementRef<HTMLElement>>('compatibilityGate');
   readonly state = signal<ChatState>(createChatState());
+  readonly streamedPreview = signal('');
   readonly completedTurns = signal<ChatTurn[]>([]);
   readonly compatible = signal<boolean | undefined>(undefined);
   readonly compatibilityPending = signal(true);
@@ -371,6 +380,12 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   private compatibilityAttempt = 0;
   private destroyed = false;
   private stickToBottom = true;
+  private typewriterFrame?: number;
+  private typewriterLastFrameAt?: number;
+  private typewriterFractionalCharacters = 0;
+  private typewriterVisibleCharacters: string[] = [];
+  private typewriterQueuedCharacters: string[] = [];
+  private typewriterQueuedOffset = 0;
 
   activityLabel(): string | undefined {
     const current = this.state();
@@ -409,6 +424,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.activeRequest?.abort();
+    this.resetTypewriter();
     if (this.compatibilityRetryTimer !== undefined) {
       clearTimeout(this.compatibilityRetryTimer);
     }
@@ -487,6 +503,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
     this.activeRequest?.abort();
     const controller = new AbortController();
     this.activeRequest = controller;
+    this.resetTypewriter();
     this.lastMessage = this.message.trim();
     if (!this.lastMessage || this.compatibilityPending() || this.compatible() !== true) return;
     if (!retrying && this.activeMessage) {
@@ -507,19 +524,17 @@ export class ChatPage implements AfterViewInit, OnDestroy {
       await this.client.stream(
         this.lastMessage,
         (event) => {
-          // Progressive render: every text-delta updates the signal on arrival
-          // (no buffering/delays) and the pending bubble appends it; final
-          // parts atomically replace the preview inside applyChatEvent.
+          if (controller.signal.aborted || this.activeRequest !== controller || this.destroyed)
+            return;
           this.state.update((current) => applyChatEvent(current, event));
+          this.updateTypewriter(event);
           this.scrollTranscriptToBottom();
         },
         controller.signal,
       );
     } catch (error) {
-      if (controller.signal.aborted) {
-        this.state.set(createChatState());
-        return;
-      }
+      if (controller.signal.aborted || this.activeRequest !== controller || this.destroyed) return;
+      this.resetTypewriter();
       const streamError =
         error instanceof ChatStreamError ||
         (typeof error === 'object' && error !== null && 'code' in error && 'retryable' in error);
@@ -542,7 +557,149 @@ export class ChatPage implements AfterViewInit, OnDestroy {
         retryable: streamError && typeof error.retryable === 'boolean' ? error.retryable : true,
       }));
       this.scrollTranscriptToBottom();
+    } finally {
+      if (this.activeRequest === controller) this.activeRequest = undefined;
     }
+  }
+
+  private updateTypewriter(event: ChatEvent): void {
+    if (event.type === 'start') {
+      this.resetTypewriter();
+      return;
+    }
+    if (event.type === 'text-delta') {
+      this.queueTypewriterText(event.text);
+      return;
+    }
+    if (event.type === 'part' && event.part.type === 'text') {
+      this.setValidatedTypewriterText(event.part.text);
+      return;
+    }
+    if (event.type === 'done' || event.type === 'error' || event.type === 'refusal') {
+      this.resetTypewriter();
+    }
+  }
+
+  private queueTypewriterText(text: string): void {
+    if (!text) return;
+    if (this.typewriterQueuedOffset > 0) {
+      this.typewriterQueuedCharacters = this.typewriterQueuedCharacters.slice(
+        this.typewriterQueuedOffset,
+      );
+      this.typewriterQueuedOffset = 0;
+    }
+    this.typewriterQueuedCharacters.push(...Array.from(text));
+    this.scheduleTypewriterFrame();
+  }
+
+  private setValidatedTypewriterText(text: string): void {
+    const visibleText = this.typewriterVisibleCharacters.join('');
+    if (!text.startsWith(visibleText)) {
+      this.cancelTypewriterFrame();
+      this.typewriterVisibleCharacters = [];
+      this.streamedPreview.set('');
+      this.typewriterLastFrameAt = undefined;
+      this.typewriterFractionalCharacters = 0;
+    }
+    const currentVisibleText = this.typewriterVisibleCharacters.join('');
+    this.typewriterQueuedCharacters = Array.from(text.slice(currentVisibleText.length));
+    this.typewriterQueuedOffset = 0;
+    this.scheduleTypewriterFrame();
+  }
+
+  private scheduleTypewriterFrame(): void {
+    if (this.typewriterQueuedOffset >= this.typewriterQueuedCharacters.length) return;
+    if (
+      this.prefersReducedMotion() ||
+      typeof requestAnimationFrame !== 'function' ||
+      typeof cancelAnimationFrame !== 'function'
+    ) {
+      this.revealQueuedTypewriterText();
+      return;
+    }
+    if (this.typewriterFrame !== undefined) return;
+    this.typewriterFrame = requestAnimationFrame((timestamp) => this.onTypewriterFrame(timestamp));
+  }
+
+  private onTypewriterFrame(timestamp: number): void {
+    this.typewriterFrame = undefined;
+    if (this.destroyed || this.state().status !== 'streaming') {
+      this.resetTypewriter();
+      return;
+    }
+    if (this.typewriterLastFrameAt === undefined) {
+      this.typewriterLastFrameAt = timestamp;
+    } else {
+      const elapsed = Math.min(
+        Math.max(0, timestamp - this.typewriterLastFrameAt),
+        MAX_TYPEWRITER_FRAME_ELAPSED_MS,
+      );
+      this.typewriterLastFrameAt = timestamp;
+      this.typewriterFractionalCharacters +=
+        (elapsed * TYPEWRITER_CHARACTERS_PER_SECOND) / 1000;
+      const remaining = this.typewriterQueuedCharacters.length - this.typewriterQueuedOffset;
+      const count = Math.min(remaining, Math.floor(this.typewriterFractionalCharacters));
+      if (count > 0) {
+        this.typewriterVisibleCharacters.push(
+          ...this.typewriterQueuedCharacters.slice(
+            this.typewriterQueuedOffset,
+            this.typewriterQueuedOffset + count,
+          ),
+        );
+        this.typewriterQueuedOffset += count;
+        this.typewriterFractionalCharacters -= count;
+        this.streamedPreview.set(this.typewriterVisibleCharacters.join(''));
+        this.scrollTranscriptToBottom();
+      }
+    }
+    if (this.typewriterQueuedOffset < this.typewriterQueuedCharacters.length) {
+      this.scheduleTypewriterFrame();
+      return;
+    }
+    this.typewriterQueuedCharacters = [];
+    this.typewriterQueuedOffset = 0;
+    this.typewriterLastFrameAt = undefined;
+    this.typewriterFractionalCharacters = 0;
+  }
+
+  private revealQueuedTypewriterText(): void {
+    if (this.typewriterQueuedOffset < this.typewriterQueuedCharacters.length) {
+      this.typewriterVisibleCharacters.push(
+        ...this.typewriterQueuedCharacters.slice(this.typewriterQueuedOffset),
+      );
+      this.streamedPreview.set(this.typewriterVisibleCharacters.join(''));
+      this.scrollTranscriptToBottom();
+    }
+    this.cancelTypewriterFrame();
+    this.typewriterQueuedCharacters = [];
+    this.typewriterQueuedOffset = 0;
+    this.typewriterLastFrameAt = undefined;
+    this.typewriterFractionalCharacters = 0;
+  }
+
+  private prefersReducedMotion(): boolean {
+    return (
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+  }
+
+  private cancelTypewriterFrame(): void {
+    if (this.typewriterFrame !== undefined && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.typewriterFrame);
+    }
+    this.typewriterFrame = undefined;
+  }
+
+  private resetTypewriter(): void {
+    this.cancelTypewriterFrame();
+    this.streamedPreview.set('');
+    this.typewriterVisibleCharacters = [];
+    this.typewriterQueuedCharacters = [];
+    this.typewriterQueuedOffset = 0;
+    this.typewriterLastFrameAt = undefined;
+    this.typewriterFractionalCharacters = 0;
   }
 
   canSubmit(): boolean {

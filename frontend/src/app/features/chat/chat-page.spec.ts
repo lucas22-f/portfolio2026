@@ -238,6 +238,87 @@ describe('ChatPage', () => {
     expect(page.querySelector('label[for="chat-message"]')?.textContent).toContain('Tu consulta');
   });
 
+  it('reveals streamed text progressively and flushes the validated answer on completion', async () => {
+    const answer = 'Esta respuesta aparece progresivamente antes de terminar.';
+    let finishStream: () => void = () => undefined;
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        onEvent({
+          request_id: 'r-typing',
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+        onEvent({ request_id: 'r-typing', sequence: 2, type: 'text-delta', text: answer });
+        await new Promise<void>((resolve) => {
+          finishStream = resolve;
+        });
+        onEvent({
+          request_id: 'r-typing',
+          sequence: 3,
+          type: 'part',
+          part: { type: 'text', grounding: 'general', text: answer },
+        });
+        onEvent({
+          request_id: 'r-typing',
+          sequence: 4,
+          type: 'done',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+      },
+    };
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    let fixture: ComponentFixture<ChatPage> | undefined;
+    let responsePromise: Promise<void> | undefined;
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+
+    try {
+      await TestBed.configureTestingModule({
+        imports: [ChatPage],
+        providers: [{ provide: ChatClient, useValue: client }],
+      }).compileComponents();
+      fixture = TestBed.createComponent(ChatPage);
+      await waitForCompatibility(fixture);
+      fixture.componentInstance.message = 'Consulta';
+
+      responsePromise = fixture.componentInstance.submit();
+      fixture.detectChanges();
+      for (let frame = 0; frame < 20; frame += 1) {
+        const scheduled = [...frames.values()];
+        frames.clear();
+        scheduled.forEach((callback) => callback((frame + 1) * 16.7));
+        fixture.detectChanges();
+      }
+
+      const page = fixture.nativeElement as HTMLElement;
+      const preview = page.querySelector<HTMLElement>('[data-testid="streaming-assistant-text"]');
+      const visibleText = preview?.querySelector('.chat-streaming-text')?.textContent ?? '';
+      expect(preview?.getAttribute('aria-live')).toBe('off');
+      expect(visibleText.length).toBeGreaterThan(0);
+      expect(visibleText.length).toBeLessThan(answer.length);
+
+      finishStream();
+      await responsePromise;
+      fixture.detectChanges();
+
+      expect(page.querySelector('[data-testid="streaming-assistant-text"]')).toBeNull();
+      expect(page.querySelector('[aria-label="Respuesta general"]')?.textContent).toContain(answer);
+    } finally {
+      finishStream();
+      fixture?.destroy();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders safe activity and groups server-owned citations with a grounded answer', async () => {
     const client = {
       checkCompatibility: async () => 'compatible',

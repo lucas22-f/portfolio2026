@@ -84,6 +84,11 @@ def test_initial_call_includes_concise_response_guidance() -> None:
     _assert_concise_response_guidance(body["instructions"])
     _assert_single_part_guidance(body["instructions"])
     assert "grounding general" in body["instructions"]
+    assert "asistente del portfolio de Lucas Figueroa" in body["instructions"]
+    assert "proyectos y decisiones tecnológicas" in body["instructions"]
+    assert "experiencia, formación y habilidades" in body["instructions"]
+    assert "No ofrezcas traducciones arbitrarias" in body["instructions"]
+    assert "redirigí brevemente y con amabilidad" in body["instructions"]
 
 
 def test_full_request_fixed_prompt_schema_and_tools_are_in_input_bound() -> None:
@@ -138,6 +143,8 @@ def test_grounded_call_uses_text_only_schema_and_server_owned_citations() -> Non
     _assert_concise_response_guidance(body["instructions"])
     _assert_single_part_guidance(body["instructions"])
     assert "grounding portfolio" in body["instructions"]
+    assert "asistente del portfolio de Lucas Figueroa" in body["instructions"]
+    assert "mantené el foco" in body["instructions"]
 
 
 def test_multiple_structured_parts_are_rejected() -> None:
