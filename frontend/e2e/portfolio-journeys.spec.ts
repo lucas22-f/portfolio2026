@@ -277,7 +277,11 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
   await expect(page.getByRole('alert')).toContainText('No pude validar la respuesta.');
   await expect(page.getByText('Vista previa sin validar.')).toHaveCount(0);
-  await expect(page.locator('script:not([src])')).toHaveCount(0);
+  // The static JSON-LD document metadata is the only allowed inline script.
+  await expect(
+    page.locator('script:not([src]):not([type="application/ld+json"])'),
+  ).toHaveCount(0);
+  await expect(page.locator('head script[type="application/ld+json"]')).toHaveCount(1);
 });
 
 test('disables only chat for incompatible metadata while static pages remain usable', async ({
