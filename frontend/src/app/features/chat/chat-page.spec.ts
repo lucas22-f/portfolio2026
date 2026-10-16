@@ -731,4 +731,84 @@ describe('ChatPage', () => {
     expect(transcript.querySelector('app-interview-contact-form form')).toBeNull();
     expect(document.activeElement?.textContent).not.toContain('Enviar una consulta a Lucas');
   });
+
+  it('prefills a starter during compatibility checks without sending it', async () => {
+    const client = {
+      checkCompatibility: () => new Promise<'compatible'>(() => undefined),
+      stream: vi.fn().mockResolvedValue(undefined),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    fixture.detectChanges();
+
+    const page = fixture.nativeElement as HTMLElement;
+    const starter = page.querySelector<HTMLButtonElement>('[data-testid="compatibility-starter"]');
+    starter?.click();
+    fixture.detectChanges();
+
+    expect(starter?.getAttribute('aria-label')).toBe(
+      'Elegir pregunta: ¿Qué proyectos puedo explorar?',
+    );
+    expect(fixture.componentInstance.message).toBe('¿Qué proyectos puedo explorar?');
+    expect(fixture.componentInstance.compatibilityPending()).toBe(true);
+    expect(client.stream).not.toHaveBeenCalled();
+    expect(page.querySelectorAll('[data-testid="compatibility-starter"]')).toHaveLength(0);
+    expect(
+      page.querySelector('[data-testid="selected-compatibility-starter"]')?.textContent,
+    ).toContain('cuando el chat conecte');
+    fixture.destroy();
+  });
+
+  it('sends the selected starter through the normal submit flow once compatible', async () => {
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn().mockResolvedValue(undefined),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+
+    const starter = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="chat-starter"]',
+    );
+    starter?.click();
+
+    expect(client.stream).toHaveBeenCalledWith(
+      '¿Qué proyectos puedo explorar?',
+      expect.any(Function),
+      expect.any(AbortSignal),
+    );
+    fixture.destroy();
+  });
+
+  it('hides starter prompts as soon as the first conversation starts', async () => {
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn(() => new Promise<void>(() => undefined)),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('[data-testid="chat-starters"]')).not.toBeNull();
+    page.querySelector<HTMLButtonElement>('[data-testid="chat-starter"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.state().status).toBe('streaming');
+    expect(page.querySelector('[data-testid="chat-starters"]')).toBeNull();
+    expect(page.querySelector('[data-testid="active-user-message"]')?.textContent).toContain(
+      '¿Qué proyectos puedo explorar?',
+    );
+    fixture.destroy();
+  });
 });

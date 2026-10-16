@@ -29,6 +29,22 @@ import {
 import { InterviewContactFormComponent } from './interview-contact-form';
 
 type ChatTurn = { message: string; state: ChatState };
+type StarterPrompt = (typeof STARTER_PROMPTS)[number];
+
+const STARTER_PROMPTS = [
+  { id: 'projects', category: 'Proyectos', prompt: '¿Qué proyectos puedo explorar?' },
+  {
+    id: 'experience',
+    category: 'Trayectoria',
+    prompt: '¿Qué experiencia y formación tiene Lucas?',
+  },
+  {
+    id: 'technologies',
+    category: 'Tecnologías',
+    prompt: '¿Qué tecnologías usa en sus proyectos?',
+  },
+  { id: 'contact', category: 'Contacto', prompt: '¿Cómo puedo contactarlo?' },
+] as const;
 
 const COMPATIBILITY_RETRY_DELAY_MS = 10_000;
 const COMPATIBILITY_MAX_ATTEMPTS = 6;
@@ -183,9 +199,61 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
               compatible() === true &&
               !compatibilityPending()
             ) {
-              <p class="m-0 max-w-xl text-lg leading-relaxed text-muted-foreground">
-                Escribí una consulta para iniciar la conversación.
-              </p>
+              @if (!showStarterPrompts()) {
+                <p class="m-0 max-w-xl text-lg leading-relaxed text-muted-foreground">
+                  Escribí una consulta para iniciar la conversación.
+                </p>
+              }
+            }
+            @if (showStarterPrompts()) {
+              <section
+                data-testid="chat-starters"
+                class="chat-starters grid gap-3"
+                aria-labelledby="chat-starters-heading"
+                aria-live="off"
+              >
+                <div class="grid gap-1">
+                  <p class="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
+                    Para empezar
+                  </p>
+                  <h4
+                    id="chat-starters-heading"
+                    class="m-0 font-[var(--font-display)] text-xl font-semibold tracking-[-0.03em] text-[var(--color-heading)]"
+                  >
+                    ¿Qué te gustaría conocer?
+                  </h4>
+                  <p class="m-0 text-sm text-muted-foreground">
+                    Elegí una pregunta o escribí la tuya.
+                  </p>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  @for (starter of starterPrompts; track starter.id; let index = $index) {
+                    <button
+                      type="button"
+                      class="chat-starter-card group grid min-h-11 gap-2 rounded-xl border border-border bg-card p-3 text-left shadow-sm"
+                      data-testid="chat-starter"
+                      [style.animation-delay.ms]="index * 55"
+                      [attr.aria-label]="'Elegir pregunta: ' + starter.prompt"
+                      (click)="selectStarter(starter)"
+                    >
+                      <span class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                          {{ starter.category }}
+                        </span>
+                        <span
+                          class="chat-starter-arrow text-base text-muted-foreground"
+                          aria-hidden="true"
+                          >↗</span
+                        >
+                      </span>
+                      <span class="text-sm font-semibold leading-snug text-[var(--color-heading)]">
+                        {{ starter.prompt }}
+                      </span>
+                      <span class="text-xs text-muted-foreground">Usar esta pregunta</span>
+                    </button>
+                  }
+                </div>
+              </section>
             }
             @if (
               state().status === 'streaming' &&
@@ -284,7 +352,13 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
               required
             ></textarea>
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <p class="m-0 text-xs text-muted-foreground">Usá el botón para enviar.</p>
+              <p class="m-0 text-xs text-muted-foreground" aria-live="polite">
+                {{
+                  selectedStarter() && message
+                    ? 'La pregunta elegida ya está lista para enviar.'
+                    : 'Usá el botón para enviar.'
+                }}
+              </p>
               <div class="flex items-center gap-2">
                 @if (!compatibilityPending()) {
                   <button
@@ -315,7 +389,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
         <section
           #compatibilityGate
           data-testid="compatibility-gate"
-          class="fixed inset-0 grid place-items-center bg-background/80 p-4 backdrop-blur-sm"
+          class="fixed inset-0 grid place-items-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="compatibility-gate-title"
@@ -323,7 +397,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
           tabindex="-1"
         >
           <div
-            class="grid w-full max-w-sm gap-4 rounded-xl border border-border bg-card p-5 shadow-sm"
+            class="grid max-h-[calc(100svh-2rem)] w-full max-w-2xl gap-5 overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6"
           >
             <div class="flex items-start gap-3">
               <hlm-spinner aria-label="Verificando la disponibilidad del chat" />
@@ -350,6 +424,70 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                 </button>
               </div>
             </div>
+            @if (selectedStarter(); as starter) {
+              <div
+                #starterSelectionNotice
+                data-testid="selected-compatibility-starter"
+                class="grid gap-2 rounded-xl border border-primary/30 bg-[var(--color-accent-subtle)] p-4"
+                role="status"
+                aria-live="polite"
+                tabindex="-1"
+              >
+                <p class="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
+                  Pregunta elegida
+                </p>
+                <p class="m-0 text-sm font-semibold leading-relaxed text-[var(--color-heading)]">
+                  {{ starter.prompt }}
+                </p>
+                <p class="m-0 text-sm leading-relaxed text-muted-foreground">
+                  Queda lista en el cuadro de consulta para enviarla cuando el chat conecte.
+                </p>
+              </div>
+            } @else {
+              <section
+                class="grid gap-3"
+                aria-labelledby="compatibility-starters-heading"
+              >
+                <div class="grid gap-1">
+                  <p class="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
+                    Mientras conecta
+                  </p>
+                  <h5
+                    id="compatibility-starters-heading"
+                    class="m-0 font-[var(--font-display)] text-lg font-semibold tracking-[-0.03em] text-[var(--color-heading)]"
+                  >
+                    Podés empezar por acá
+                  </h5>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  @for (starter of starterPrompts; track starter.id; let index = $index) {
+                    <button
+                      type="button"
+                      class="chat-starter-card group grid min-h-11 gap-2 rounded-xl border border-border bg-card p-3 text-left shadow-sm"
+                      data-testid="compatibility-starter"
+                      [style.animation-delay.ms]="index * 55"
+                      [attr.aria-label]="'Elegir pregunta: ' + starter.prompt"
+                      (click)="selectStarter(starter)"
+                    >
+                      <span class="flex items-center justify-between gap-3">
+                        <span class="text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                          {{ starter.category }}
+                        </span>
+                        <span
+                          class="chat-starter-arrow text-base text-muted-foreground"
+                          aria-hidden="true"
+                          >↗</span
+                        >
+                      </span>
+                      <span class="text-sm font-semibold leading-snug text-[var(--color-heading)]">
+                        {{ starter.prompt }}
+                      </span>
+                      <span class="text-xs text-muted-foreground">Preparar esta pregunta</span>
+                    </button>
+                  }
+                </div>
+              </section>
+            }
           </div>
         </section>
       }
@@ -366,9 +504,14 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   private readonly heading = viewChild.required<ElementRef<HTMLElement>>('heading');
   private readonly transcriptRef = viewChild<ElementRef<HTMLElement>>('transcript');
   private readonly compatibilityGate = viewChild<ElementRef<HTMLElement>>('compatibilityGate');
+  private readonly starterSelectionNotice = viewChild<ElementRef<HTMLElement>>(
+    'starterSelectionNotice',
+  );
+  readonly starterPrompts = STARTER_PROMPTS;
   readonly state = signal<ChatState>(createChatState());
   readonly streamedPreview = signal('');
   readonly completedTurns = signal<ChatTurn[]>([]);
+  readonly selectedStarter = signal<StarterPrompt | undefined>(undefined);
   readonly compatible = signal<boolean | undefined>(undefined);
   readonly compatibilityPending = signal(true);
   readonly compatibilityRetryAvailable = signal(false);
@@ -708,6 +851,30 @@ export class ChatPage implements AfterViewInit, OnDestroy {
       this.state().status !== 'streaming' &&
       this.compatible() === true
     );
+  }
+
+  showStarterPrompts(): boolean {
+    return (
+      !this.compatibilityPending() &&
+      this.compatible() === true &&
+      this.state().status === 'idle' &&
+      !this.activeMessage &&
+      this.completedTurns().length === 0 &&
+      !this.selectedStarter()
+    );
+  }
+
+  selectStarter(starter: StarterPrompt): void {
+    this.selectedStarter.set(starter);
+    this.message = starter.prompt;
+    if (this.compatibilityPending() || this.compatible() !== true) {
+      afterNextRender(
+        () => this.starterSelectionNotice()?.nativeElement.focus({ preventScroll: true }),
+        { injector: this.injector },
+      );
+      return;
+    }
+    void this.submit();
   }
 
   retry(): Promise<void> {
