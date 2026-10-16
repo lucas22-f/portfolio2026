@@ -15,6 +15,14 @@
   z-index: 1;
 }
 
+@media (min-width: 96rem) {
+  #assistant {
+    left: 50%;
+    width: min(96rem, calc(100vw - 4rem));
+    transform: translateX(-50%);
+  }
+}
+
 .journey-ribbon {
   pointer-events: none;
   position: fixed;

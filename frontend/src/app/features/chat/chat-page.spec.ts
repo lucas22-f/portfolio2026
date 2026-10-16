@@ -811,4 +811,129 @@ describe('ChatPage', () => {
     );
     fixture.destroy();
   });
+
+  it('renders accessible desktop side guides and hides duplicate central starters at 2xl', async () => {
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const page = fixture.nativeElement as HTMLElement;
+    const starters = page.querySelector<HTMLElement>('[data-testid="chat-side-starters"]');
+    const guide = page.querySelector<HTMLElement>('[data-testid="chat-usage-guide"]');
+
+    expect(starters?.tagName).toBe('ASIDE');
+    expect(starters?.getAttribute('aria-labelledby')).toBe('chat-side-starters-heading');
+    expect(starters?.querySelectorAll('[data-testid="chat-side-starter"]')).toHaveLength(4);
+    expect(starters?.classList.contains('2xl:block')).toBe(true);
+    expect(starters?.classList.contains('2xl:col-start-1')).toBe(true);
+    expect(starters?.classList.contains('2xl:row-start-2')).toBe(true);
+    expect(
+      page.querySelector('[data-testid="chat-starters"]')?.classList.contains('2xl:hidden'),
+    ).toBe(true);
+    expect(guide?.tagName).toBe('ASIDE');
+    expect(guide?.getAttribute('aria-labelledby')).toBe('chat-usage-guide-heading');
+    expect(guide?.querySelectorAll('ol > li')).toHaveLength(3);
+    expect(guide?.classList.contains('2xl:col-start-3')).toBe(true);
+    expect(guide?.classList.contains('2xl:row-start-2')).toBe(true);
+    expect(
+      page
+        .querySelector('[data-testid="chat-viewport"] > div')
+        ?.classList.contains('2xl:max-w-[88rem]'),
+    ).toBe(true);
+    expect(guide?.textContent).toContain('Cómo usar el asistente');
+    expect(guide?.textContent).toContain('vas a ver los archivos y las páginas consultadas');
+    fixture.destroy();
+  });
+
+  it('sends a desktop starter through the normal chat flow and keeps the guide after answering', async () => {
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn(async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        onEvent({
+          request_id: 'side-starter-1',
+          sequence: 1,
+          type: 'start',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+        onEvent({
+          request_id: 'side-starter-1',
+          sequence: 2,
+          type: 'part',
+          part: { type: 'text', grounding: 'general', text: 'Podemos recorrer los proyectos.' },
+        });
+        onEvent({
+          request_id: 'side-starter-1',
+          sequence: 3,
+          type: 'done',
+          protocol_version: '5',
+          content_version: 'v1',
+        });
+      }),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const page = fixture.nativeElement as HTMLElement;
+    const starter = page.querySelector<HTMLButtonElement>('[data-testid="chat-side-starter"]')!;
+
+    starter.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(starter.getAttribute('aria-label')).toBe(
+      'Elegir pregunta: ¿Qué proyectos puedo explorar?',
+    );
+    expect(client.stream).toHaveBeenCalledTimes(1);
+    expect(client.stream).toHaveBeenCalledWith(
+      '¿Qué proyectos puedo explorar?',
+      expect.any(Function),
+      expect.any(AbortSignal),
+    );
+    expect(fixture.componentInstance.state().status).toBe('complete');
+    expect(page.querySelector('[data-testid="chat-usage-guide"]')).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('disables desktop starter controls while streaming and ignores a second selection', async () => {
+    let requestSignal: AbortSignal | undefined;
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn(
+        async (_message: string, _onEvent: (event: ChatEvent) => void, signal: AbortSignal) => {
+          requestSignal = signal;
+          await new Promise<void>(() => undefined);
+        },
+      ),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const page = fixture.nativeElement as HTMLElement;
+    const starters = page.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="chat-side-starter"]',
+    );
+
+    starters[0].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.state().status).toBe('streaming');
+    expect(starters[0].disabled).toBe(true);
+    expect(starters[1].disabled).toBe(true);
+
+    starters[1].click();
+    fixture.componentInstance.selectStarter(fixture.componentInstance.starterPrompts[1]);
+
+    expect(client.stream).toHaveBeenCalledTimes(1);
+    expect(requestSignal?.aborted).toBe(false);
+    fixture.destroy();
+  });
 });

@@ -61,12 +61,12 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
       aria-labelledby="chat-heading"
     >
       <div
-        class="mx-auto grid h-svh w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] px-4 sm:px-8"
+        class="mx-auto grid h-svh w-full max-w-4xl grid-rows-[auto_minmax(0,1fr)_auto] px-4 sm:px-8 2xl:max-w-[88rem] 2xl:grid-cols-[12rem_minmax(0,56rem)_12rem] 2xl:gap-x-8"
         [class.blur-sm]="compatibilityPending()"
         [attr.aria-hidden]="compatibilityPending() ? 'true' : null"
         [attr.inert]="compatibilityPending() ? '' : null"
       >
-        <header class="border-b border-border py-5 sm:py-6">
+        <header class="border-b border-border py-5 sm:py-6 2xl:col-start-2 2xl:row-start-1">
           <p class="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">
             Consulta guiada
           </p>
@@ -84,10 +84,49 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
           </p>
         </header>
 
+        <aside
+          data-testid="chat-side-starters"
+          class="hidden min-w-0 self-start pt-8 2xl:col-start-1 2xl:row-start-2 2xl:block"
+          aria-labelledby="chat-side-starters-heading"
+        >
+          <div class="border-l border-border pl-4">
+            <p class="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
+              Para empezar
+            </p>
+            <h4
+              id="chat-side-starters-heading"
+              class="mt-2 font-[var(--font-display)] text-lg font-semibold tracking-[-0.03em] text-[var(--color-heading)]"
+            >
+              Preguntas rápidas
+            </h4>
+            <ul class="mt-3 grid list-none gap-1 p-0">
+              @for (starter of starterPrompts; track starter.id) {
+                <li>
+                  <button
+                    type="button"
+                    class="chat-side-starter grid min-h-11 w-full gap-1 border-b border-border py-2 text-left"
+                    data-testid="chat-side-starter"
+                    [disabled]="state().status === 'streaming' || compatible() !== true"
+                    [attr.aria-label]="'Elegir pregunta: ' + starter.prompt"
+                    (click)="selectStarter(starter)"
+                  >
+                    <span class="text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                      {{ starter.category }}
+                    </span>
+                    <span class="text-sm font-semibold leading-snug text-[var(--color-heading)]">
+                      {{ starter.prompt }}
+                    </span>
+                  </button>
+                </li>
+              }
+            </ul>
+          </div>
+        </aside>
+
         <div
           #transcript
           data-testid="chat-transcript"
-          class="chat-transcript min-h-0 overflow-y-auto overscroll-contain py-6 sm:py-8"
+          class="chat-transcript min-h-0 overflow-y-auto overscroll-contain py-6 sm:py-8 2xl:col-start-2 2xl:row-start-2"
           role="log"
           aria-label="Respuesta del asistente"
           aria-live="polite"
@@ -208,7 +247,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
             @if (showStarterPrompts()) {
               <section
                 data-testid="chat-starters"
-                class="chat-starters grid gap-3"
+                class="chat-starters grid gap-3 2xl:hidden"
                 aria-labelledby="chat-starters-heading"
                 aria-live="off"
               >
@@ -330,9 +369,50 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
           </div>
         </div>
 
+        <aside
+          data-testid="chat-usage-guide"
+          class="hidden min-w-0 self-start pt-8 2xl:col-start-3 2xl:row-start-2 2xl:block"
+          aria-labelledby="chat-usage-guide-heading"
+        >
+          <div class="border-l border-border pl-4">
+            <p class="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
+              Una charla clara
+            </p>
+            <h4
+              id="chat-usage-guide-heading"
+              class="mt-2 font-[var(--font-display)] text-lg font-semibold tracking-[-0.03em] text-[var(--color-heading)]"
+            >
+              Cómo usar el asistente
+            </h4>
+            <ol class="mt-4 grid list-none gap-4 p-0 text-sm leading-relaxed text-muted-foreground">
+              <li class="grid gap-1 border-l border-border pl-3">
+                <span class="text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                  Consultá el portfolio
+                </span>
+                <span>Preguntá por proyectos, experiencia, formación o habilidades de Lucas.</span>
+              </li>
+              <li class="grid gap-1 border-l border-border pl-3">
+                <span class="text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                  Seguí la conversación
+                </span>
+                <span>Podés hacer otra pregunta o pedir más detalle sobre una respuesta.</span>
+              </li>
+              <li class="grid gap-1 border-l border-border pl-3">
+                <span class="text-xs font-bold uppercase tracking-[0.1em] text-primary">
+                  Revisá las fuentes
+                </span>
+                <span
+                  >Cuando una respuesta usa el portfolio, vas a ver los archivos y las páginas
+                  consultadas.</span
+                >
+              </li>
+            </ol>
+          </div>
+        </aside>
+
         <form
           data-testid="chat-composer"
-          class="chat-composer sticky bottom-0 z-10 border-t border-border bg-[var(--color-bg)] py-4 sm:py-5"
+          class="chat-composer sticky bottom-0 z-10 border-t border-border bg-[var(--color-bg)] py-4 sm:py-5 2xl:col-start-2 2xl:row-start-3"
           (ngSubmit)="submit()"
         >
           <div
@@ -865,6 +945,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   }
 
   selectStarter(starter: StarterPrompt): void {
+    if (this.state().status === 'streaming') return;
     this.selectedStarter.set(starter);
     this.message = starter.prompt;
     if (this.compatibilityPending() || this.compatible() !== true) {

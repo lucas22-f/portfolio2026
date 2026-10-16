@@ -67,6 +67,28 @@
   transform: translate(1px, -1px);
 }
 
+.chat-side-starter {
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.chat-side-starter:hover:not(:disabled) {
+  color: var(--color-accent);
+}
+
+.chat-side-starter:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.chat-side-starter:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .chat-streaming-text {
   overflow-wrap: anywhere;
   text-wrap: pretty;
@@ -99,6 +121,10 @@
   .chat-starter-card:focus-visible {
     outline: 2px solid ButtonText;
     outline-offset: 2px;
+  }
+
+  .chat-side-starter:focus-visible {
+    outline-color: ButtonText;
   }
 }
 
@@ -147,6 +173,7 @@
   .chat-stream-caret,
   .chat-activity-dot,
   .chat-starter-card,
+  .chat-side-starter,
   .chat-starter-arrow {
     animation: none;
     transition: none;
