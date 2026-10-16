@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://portfolio2026-seven-chi.vercel.app/sitemap.xml
