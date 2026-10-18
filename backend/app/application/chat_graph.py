@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from typing import Any, TypedDict, cast
 
@@ -12,6 +13,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.application.chat import (
     CandidateValidationError,
+    CvDownloadPart,
     ValidatedPart,
     citations_to_parts,
     validate_candidate,
@@ -46,6 +48,7 @@ class ChatGraphState(TypedDict, total=False):
     on_portfolio_search: Callable[[], None]
     contact_intent: str | None
     contact_form_supported: bool
+    direct_intent: str | None
 
 
 async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
@@ -55,21 +58,67 @@ async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
     return await RunnableLambda[object, ProviderResult](call).ainvoke(None)
 
 
+def _direct_intent(message: str) -> str | None:
+    normalized = message.casefold()
+    if any(term in normalized for term in ("currículum", "curriculum", "resume", "résumé")) or re.search(
+        r"\bcv\b", normalized
+    ):
+        return "cv_download"
+    asks_client = any(term in normalized for term in ("cliente", "client"))
+    asks_identity = any(
+        phrase in normalized
+        for phrase in (
+            "quién era",
+            "quien era",
+            "quién fue",
+            "quien fue",
+            "quién es",
+            "quien es",
+            "who was",
+            "who is",
+            "what client",
+        )
+    )
+    return "client_identity" if asks_client and asks_identity else None
+
+
 async def validate_safety(state: ChatGraphState) -> dict[str, object]:
     outcome = classify_safety(state["message"])
     return {
         "safety": outcome,
         "refusal": "unsafe" if outcome.classification == "unsafe" else None,
         "contact_intent": classify_contact_intent(state["message"]),
+        "direct_intent": _direct_intent(state["message"]),
     }
 
 
 def after_safety(state: ChatGraphState) -> str:
     if state.get("refusal"):
         return "finalize"
+    if state.get("direct_intent"):
+        return "direct_response"
     if state.get("contact_form_supported") and state.get("contact_intent"):
         return "contact_form"
     return "initial_answer"
+
+
+async def direct_response(state: ChatGraphState) -> dict[str, object]:
+    if state.get("direct_intent") == "cv_download":
+        return {"parts": [CvDownloadPart()], "usage": {"total_tokens": 0}}
+    if state.get("direct_intent") == "client_identity":
+        return {
+            "parts": [
+                validate_candidate(
+                    {
+                        "type": "text",
+                        "text": "El cliente fue Mercado Libre; Lucas trabajó como freelance para un equipo, no como empleado interno.",
+                        "grounding": "general",
+                    }
+                )
+            ],
+            "usage": {"total_tokens": 0},
+        }
+    return {"parts": []}
 
 
 async def contact_form(state: ChatGraphState) -> dict[str, object]:
@@ -255,6 +304,7 @@ def _graph() -> CompiledStateGraph[ChatGraphState, None, ChatGraphState, ChatGra
     for name, node in (
         ("validate_safety", validate_safety),
         ("contact_form", contact_form),
+        ("direct_response", direct_response),
         ("initial_answer", initial_answer),
         ("retrieve", retrieve),
         ("grounded_answer", grounded_answer),
@@ -270,10 +320,12 @@ def _graph() -> CompiledStateGraph[ChatGraphState, None, ChatGraphState, ChatGra
         {
             "initial_answer": "initial_answer",
             "contact_form": "contact_form",
+            "direct_response": "direct_response",
             "finalize": "finalize",
         },
     )
     graph.add_edge("contact_form", "finalize")
+    graph.add_edge("direct_response", "finalize")
     graph.add_conditional_edges(
         "initial_answer",
         after_initial_answer,

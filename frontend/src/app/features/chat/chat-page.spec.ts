@@ -238,6 +238,36 @@ describe('ChatPage', () => {
     expect(page.querySelector('label[for="chat-message"]')?.textContent).toContain('Tu consulta');
   });
 
+  it('renders a labeled accessible CV download button bound to the fixed local PDF', async () => {
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+        onEvent({ request_id: 'cv-1', sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        onEvent({
+          request_id: 'cv-1', sequence: 2, type: 'part',
+          part: { type: 'cv_download', href: '/downloads/CV_Lucas_Figueroa.pdf', label: 'Descargar CV de Lucas' },
+        });
+        onEvent({ request_id: 'cv-1', sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+      },
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    fixture.componentInstance.message = 'Quiero el CV de Lucas';
+    await fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>(
+      'a[download][href="/downloads/CV_Lucas_Figueroa.pdf"]',
+    );
+    expect(button?.textContent).toContain('Descargar CV de Lucas');
+    expect(button?.getAttribute('aria-label')).toBe('Descargar CV de Lucas');
+    expect(button?.getAttribute('download')).toBe('CV_Lucas_Figueroa.pdf');
+  });
+
   it('reveals streamed text progressively and flushes the validated answer on completion', async () => {
     const answer = 'Esta respuesta aparece progresivamente antes de terminar.';
     let finishStream: () => void = () => undefined;

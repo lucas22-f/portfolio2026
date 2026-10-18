@@ -66,6 +66,49 @@ async def test_contact_intent_returns_only_form_without_invoking_provider() -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("message", "expected_part"),
+    [
+        ("¿Quién era el cliente?", "text"),
+        ("Quiero el CV de Lucas", "cv_download"),
+    ],
+)
+async def test_direct_identity_and_cv_intents_bypass_provider(message: str, expected_part: str) -> None:
+    async def invoke(*args: object) -> ProviderResult:
+        raise AssertionError("deterministic intents must not invoke the AI")
+
+    result = await run_chat_graph(
+        {"message": message, "invoke_model": invoke, "retriever": _Retriever()}
+    )
+
+    assert "error" not in result
+    assert len(result["parts"]) == 1
+    part = result["parts"][0]
+    assert part.type == expected_part
+    if expected_part == "text":
+        assert "Mercado Libre" in part.text
+        assert "freelance" in part.text
+    else:
+        assert part.href == "/downloads/CV_Lucas_Figueroa.pdf"
+
+
+@pytest.mark.asyncio
+async def test_unrelated_request_does_not_emit_identity_or_download_action() -> None:
+    async def invoke(*args: object) -> ProviderResult:
+        return ProviderResult(
+            [{"type": "text", "text": "Respuesta general.", "grounding": "general"}],
+            total_tokens=1,
+        )
+
+    result = await run_chat_graph(
+        {"message": "Hola, ¿cómo estás?", "invoke_model": invoke, "retriever": _Retriever()}
+    )
+
+    assert [part.type for part in result["parts"]] == ["text"]
+    assert "Mercado Libre" not in result["parts"][0].text
+
+
+@pytest.mark.asyncio
 async def test_initial_candidate_never_streams_before_final_grounding_validation() -> None:
     deltas: list[str] = []
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "content_version": "838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c",
+  "content_version": "1ec94e9c6dac515c5d172117d7f4e1c108870984517bd308d24dc7c220581806",
   "locale": "es",
   "records": [
     {
@@ -30,7 +30,7 @@
         },
         {
           "claim_id": "profile-scale",
-          "text": "Experiencia desarrollando soluciones utilizadas por miles de empleados en Mercado Libre.",
+          "text": "Experiencia freelance diseñando e implementando soluciones de IA conversacional para plataformas corporativas de gran escala.",
           "provenance_id": "cv-page-1"
         }
       ],
@@ -49,65 +49,63 @@
       ]
     },
     {
-      "id": "mercadolibre-conversational-ai",
+      "id": "conversational-ai-freelance",
       "kind": "experience",
-      "title": "MercadoLibre — Developer / Conversational AI",
+      "title": "Conversational AI Engineer — Freelance",
       "claims": [
         {
           "claim_id": "experience-role",
-          "text": "Developer / Conversational AI en MercadoLibre como contractor, desde junio de 2025 hasta la actualidad, en modalidad remota desde Buenos Aires, Argentina.",
+          "text": "Conversational AI Engineer freelance en proyectos para una plataforma de e-commerce líder en Latinoamérica (cliente bajo acuerdo de confidencialidad), desde junio de 2025 hasta la actualidad, en modalidad remota desde Buenos Aires, Argentina.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-botmaker",
-          "text": "Botmaker: desarrollo y mantenimiento de workflows de chatbots internos.",
+          "text": "Diseño, desarrollo y mantenimiento de workflows de chatbots internos en Botmaker, para procesos utilizados por miles de usuarios corporativos en la región.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-code-actions",
-          "text": "Implementación de Code Actions en Node.js integradas con APIs internas de RRHH y SAP SuccessFactors para vacaciones, liquidaciones y datos de empleados.",
+          "text": "Implementación de Code Actions en Node.js con APIs corporativas de RRHH (SAP SuccessFactors) para automatizar vacaciones, liquidaciones y datos de empleados.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-dataflow",
-          "text": "Procesamiento de datos mediante pipelines Python y BigQuery en DataFlow para extracción y transformación a escala, con notificación masiva a empleados.",
+          "text": "Pipelines de datos en Python y BigQuery (GCP) para procesamiento y notificación masiva a usuarios a gran escala.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-fury",
-          "text": "Desarrollos sobre Fury, la infraestructura cloud interna de Mercado Libre.",
+          "text": "Desarrollo e integración de aplicaciones sobre infraestructura cloud propietaria del cliente.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-verdi",
-          "text": "Migración de flujos legacy de Botmaker a Verdi mediante procesos YAML con IA generativa.",
+          "text": "Migración de flujos legacy hacia una plataforma interna de IA generativa, con procesos YAML asistidos por IA.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-mcp",
-          "text": "Migración de flujos legacy de Botmaker a MCPs en Python con FastMCP y Fury.",
+          "text": "Migración de flujos legacy hacia una arquitectura de servidores MCP en Python con FastMCP.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-rag",
-          "text": "Implementación de sistemas RAG sobre Fury para brindar fuentes de conocimiento dinámicas y actualizadas a los bots.",
+          "text": "Implementación de sistemas RAG para brindar a los bots fuentes de conocimiento dinámicas y actualizadas.",
           "provenance_id": "cv-page-1"
         },
         {
           "claim_id": "experience-production",
-          "text": "Participación simultánea en múltiples proyectos con soluciones en producción utilizadas por empleados de Mercado Libre en la región.",
+          "text": "Participación en múltiples proyectos simultáneos, entregando soluciones en producción utilizadas por usuarios corporativos en toda la región.",
           "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
-        "mercadolibre",
         "conversational-ai",
         "python",
         "nodejs"
       ],
       "aliases": [
-        "MELI",
-        "Mercado Libre",
+        "freelance",
         "experiencia"
       ],
       "provenance": [
@@ -240,7 +238,7 @@
       "claims": [
         {
           "claim_id": "skills-data-cloud-claim",
-          "text": "BigQuery, GCP, DataFlow, Fury y pipelines de datos.",
+          "text": "BigQuery, GCP y pipelines de datos.",
           "provenance_id": "cv-page-1"
         }
       ],
@@ -329,7 +327,7 @@
         {
           "claim_id": "cert-full-stack-claim",
           "text": "Certificación de UTN, ID CER-NO9H77PR-69154.",
-          "provenance_id": "cv-page-2"
+          "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
@@ -339,7 +337,7 @@
         "Diplomatura en Programación Web Full Stack"
       ],
       "provenance": [
-        "cv-page-2"
+        "cv-page-1"
       ]
     },
     {
@@ -350,7 +348,7 @@
         {
           "claim_id": "cert-web-inicial-claim",
           "text": "Certificación de UTN, ID CER-SOI8CTEK74019.",
-          "provenance_id": "cv-page-2"
+          "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
@@ -360,7 +358,7 @@
         "Programador Web Inicial"
       ],
       "provenance": [
-        "cv-page-2"
+        "cv-page-1"
       ]
     },
     {
@@ -371,7 +369,7 @@
         {
           "claim_id": "cert-prompting-claim",
           "text": "Certificación de Founders y Microsoft.",
-          "provenance_id": "cv-page-2"
+          "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
@@ -381,7 +379,7 @@
         "Prompting inicial"
       ],
       "provenance": [
-        "cv-page-2"
+        "cv-page-1"
       ]
     },
     {
@@ -392,7 +390,7 @@
         {
           "claim_id": "cert-n8n-mcp-claim",
           "text": "Curso “Automatización y agentes de IA inteligentes” en Udemy.",
-          "provenance_id": "cv-page-2"
+          "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
@@ -402,24 +400,24 @@
         "n8n + MCP"
       ],
       "provenance": [
-        "cv-page-2"
+        "cv-page-1"
       ]
     },
     {
-      "id": "project-dataflow-notifications",
+      "id": "project-data-pipelines",
       "kind": "project",
       "title": "Procesamiento y notificación masiva",
       "claims": [
         {
           "claim_id": "project-dataflow-notifications-claim",
-          "text": "Pipelines en Python y BigQuery sobre DataFlow para extraer y transformar datos a escala y realizar notificaciones masivas a empleados.",
+          "text": "Pipelines en Python y BigQuery (GCP) para procesar y notificar datos a gran escala.",
           "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
         "python",
         "bigquery",
-        "dataflow"
+        "gcp"
       ],
       "aliases": [
         "Procesamiento y notificación masiva"
@@ -428,7 +426,7 @@
         "cv-page-1"
       ],
       "project": {
-        "summary": "Pipelines en Python y BigQuery sobre DataFlow para extraer y transformar datos a escala y realizar notificaciones masivas a empleados."
+        "summary": "Pipelines en Python y BigQuery (GCP) para procesar y notificar datos a gran escala."
       }
     },
     {
@@ -438,13 +436,13 @@
       "claims": [
         {
           "claim_id": "project-chat-migrations-claim",
-          "text": "Migración de flujos legacy de Botmaker a Verdi y a MCPs en Python con FastMCP sobre Fury.",
+          "text": "Migración de flujos legacy de Botmaker a una plataforma interna de IA generativa y a servidores MCP en Python con FastMCP.",
           "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
         "botmaker",
-        "verdi",
+        "generative-ai",
         "mcp",
         "fastmcp"
       ],
@@ -455,33 +453,32 @@
         "cv-page-1"
       ],
       "project": {
-        "summary": "Migración de flujos legacy de Botmaker a Verdi y a MCPs en Python con FastMCP sobre Fury."
+        "summary": "Migración de flujos legacy de Botmaker a una plataforma interna de IA generativa y a servidores MCP en Python con FastMCP."
       }
     },
     {
-      "id": "project-rag-fury",
+      "id": "project-rag-knowledge",
       "kind": "project",
-      "title": "Sistemas RAG sobre Fury",
+      "title": "Sistemas RAG para bots",
       "claims": [
         {
           "claim_id": "project-rag-fury-claim",
-          "text": "Implementación de sistemas RAG sobre Fury para aportar a los bots fuentes de conocimiento dinámicas y actualizadas.",
+          "text": "Implementación de sistemas RAG para aportar a los bots fuentes de conocimiento dinámicas y actualizadas.",
           "provenance_id": "cv-page-1"
         }
       ],
       "tags": [
         "rag",
-        "fury",
         "conversational-ai"
       ],
       "aliases": [
-        "Sistemas RAG sobre Fury"
+        "Sistemas RAG para bots"
       ],
       "provenance": [
         "cv-page-1"
       ],
       "project": {
-        "summary": "Implementación de sistemas RAG sobre Fury para aportar a los bots fuentes de conocimiento dinámicas y actualizadas."
+        "summary": "Implementación de sistemas RAG para aportar a los bots fuentes de conocimiento dinámicas y actualizadas."
       }
     }
   ]

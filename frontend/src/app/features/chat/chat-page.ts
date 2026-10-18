@@ -177,6 +177,15 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                   </article>
                 } @else if (part.type === 'interview_contact_form') {
                   <app-interview-contact-form class="chat-contact-part" [part]="part" />
+                } @else if (part.type === 'cv_download') {
+                  <a
+                    hlmBtn
+                    class="min-h-11 w-fit"
+                    [href]="part.href"
+                    [attr.download]="'CV_Lucas_Figueroa.pdf'"
+                    [attr.aria-label]="part.label"
+                    data-testid="cv-download"
+                  >{{ part.label }}</a>
                 }
               }
               @if (turn.state.status === 'error' || turn.state.status === 'refused') {
@@ -362,6 +371,16 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                     @if (state().status === 'complete') {
                       <app-interview-contact-form class="chat-contact-part" [part]="part" />
                     }
+                  }
+                  @case ('cv_download') {
+                    <a
+                      hlmBtn
+                      class="min-h-11 w-fit"
+                      [href]="part.href"
+                      [attr.download]="'CV_Lucas_Figueroa.pdf'"
+                      [attr.aria-label]="part.label"
+                      data-testid="cv-download"
+                    >{{ part.label }}</a>
                   }
                 }
               }

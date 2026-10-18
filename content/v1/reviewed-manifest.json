@@ -1,36 +1,25 @@
 {
   "schema_version": "1.0.0",
-  "content_version": "838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c",
+  "content_version": "1ec94e9c6dac515c5d172117d7f4e1c108870984517bd308d24dc7c220581806",
   "sources": [
     {
       "source_id": "cv-lucas-figueroa",
-      "file_name": "CV_Lucas_Figueroa7-7.pdf",
-      "source_sha256": "479776732ca2fe9df90a753c3df55c0ac7560ebcbc1fec4a7250e8e451f56045",
-      "source_text_sha256": "bd737e268c17185bf2b74e33e28a7acf801e796dcfa9ade5ead5aca20195791d",
-      "page_count": 2
+      "file_name": "CV_Lucas_Figueroa09-1.pdf",
+      "source_sha256": "1ad0cd41e3f4c6e57cd2938b3b8b53f30671e5f047186e88ea645d55c5091f83",
+      "source_text_sha256": "f76c4c30abbc356df74b631d44387447b8de5c6ed79b36d35891e44406c814ba",
+      "page_count": 1
     }
   ],
   "entries": [
     {
       "provenance_id": "cv-page-1",
       "source_id": "cv-lucas-figueroa",
-      "source_sha256": "479776732ca2fe9df90a753c3df55c0ac7560ebcbc1fec4a7250e8e451f56045",
+      "source_sha256": "1ad0cd41e3f4c6e57cd2938b3b8b53f30671e5f047186e88ea645d55c5091f83",
       "page": 1,
       "normalized_start": 0,
-      "normalized_end": 2669,
-      "excerpt_sha256": "57f660dedc2682b6f0bdbbc5f67690305ae9c81152e68b261bfa85f582df014d",
-      "reviewed_at": "2026-07-22",
-      "reviewer": "automated-source-verification:pypdf"
-    },
-    {
-      "provenance_id": "cv-page-2",
-      "source_id": "cv-lucas-figueroa",
-      "source_sha256": "479776732ca2fe9df90a753c3df55c0ac7560ebcbc1fec4a7250e8e451f56045",
-      "page": 2,
-      "normalized_start": 0,
-      "normalized_end": 260,
-      "excerpt_sha256": "78c18843c4723e3546a3b211edc4177660d67e28c24ab04a5945b822420c4b8a",
-      "reviewed_at": "2026-07-22",
+      "normalized_end": 2907,
+      "excerpt_sha256": "8b24e7861233cf2b639238e5bc0bc18dfb710db88e667797900ac7b0d3399d92",
+      "reviewed_at": "2026-10-18",
       "reviewer": "automated-source-verification:pypdf"
     }
   ]

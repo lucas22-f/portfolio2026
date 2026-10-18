@@ -118,13 +118,13 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
 
               <div hlmCardContent class="grid gap-3">
                 <p class="m-0 text-xs leading-relaxed text-muted-foreground sm:text-base">
-                  Desarrollo remoto de soluciones conversacionales para equipos de Mercado Libre en la región.
+                  Trabajo freelance para una plataforma de e-commerce líder en Latinoamérica, junto a un equipo remoto.
                 </p>
                 <div hlmSeparator></div>
                 <ul class="m-0 grid list-none gap-2 p-0 text-xs leading-relaxed text-(--color-text) sm:grid-cols-3 sm:text-sm">
                   <li class="border-l border-border pl-3">Workflows de bots internos y automatización.</li>
                   <li class="border-l border-border pl-3">Code Actions con APIs de RRHH y SAP SuccessFactors.</li>
-                  <li class="border-l border-border pl-3">Pipelines de datos e IA sobre Fury.</li>
+                  <li class="border-l border-border pl-3">Pipelines de datos e IA conversacional en producción.</li>
                 </ul>
                 <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Tecnologías y áreas de experiencia">
                   @for (tag of experienceTags; track tag) {
@@ -314,7 +314,7 @@ export class JourneyPage implements AfterViewInit, OnDestroy {
     this.content?.portfolio.records.filter((record) => record.kind === 'skill') ?? [];
   readonly certificationRecords =
     this.content?.portfolio.records.filter((record) => record.tags.includes('certification')) ?? [];
-  readonly experienceTags = ['Botmaker', 'Node.js', 'Python', 'BigQuery', 'RAG', 'MCP', 'Fury'];
+  readonly experienceTags = ['Botmaker', 'Node.js', 'Python', 'BigQuery', 'RAG', 'MCP', 'FastMCP'];
   readonly projectRecords =
     this.content?.portfolio.records.filter((record) => record.kind === 'project') ?? [];
   readonly projectCarouselOptions = {

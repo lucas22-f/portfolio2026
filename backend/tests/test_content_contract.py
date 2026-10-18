@@ -59,6 +59,21 @@ def test_reviewed_content_files_share_a_recomputed_version() -> None:
     assert "?" not in json.dumps(bundle.portfolio.model_dump(), ensure_ascii=False)
 
 
+def test_public_cv_content_presents_freelance_work_without_naming_client() -> None:
+    bundle = load_content_bundle(CONTENT_ROOT)
+    portfolio_text = json.dumps(bundle.portfolio.model_dump(), ensure_ascii=False).casefold()
+    source = json.loads((CONTENT_ROOT / "cv-source.json").read_text(encoding="utf-8"))
+    source_text = " ".join(page["normalized_text"] for page in source["pages"]).casefold()
+
+    assert source["file_name"] == "CV_Lucas_Figueroa09-1.pdf"
+    assert "freelance" in portfolio_text
+    assert "confidencial" in portfolio_text
+    assert "mercadolibre" not in portfolio_text
+    assert "mercado libre" not in portfolio_text
+    assert "mercadolibre" not in source_text
+    assert "mercado libre" not in source_text
+
+
 def test_missing_optional_project_links_remain_missing() -> None:
     bundle = load_content_bundle(CONTENT_ROOT)
     project_without_links = next(

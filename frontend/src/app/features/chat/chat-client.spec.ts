@@ -9,7 +9,7 @@ import {
   logChatLifecycle,
 } from './chat-client';
 
-const CONTENT_VERSION = '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c';
+const CONTENT_VERSION = '1ec94e9c6dac515c5d172117d7f4e1c108870984517bd308d24dc7c220581806';
 
 function sse(events: Array<Record<string, unknown>>): string {
   return events
@@ -55,6 +55,30 @@ describe('SSE event parsing', () => {
     );
 
     expect(events.map((event) => event.type)).toEqual(['start', 'tool', 'part', 'done']);
+  });
+
+  it('accepts only the fixed in-repository CV download action', () => {
+    const download = {
+      type: 'cv_download',
+      href: '/downloads/CV_Lucas_Figueroa.pdf',
+      label: 'Descargar CV de Lucas',
+    };
+    expect(
+      parseSseEvents(
+        sse([start, { request_id: 'r-1', sequence: 2, type: 'part', part: download }, { ...done, sequence: 3 }]),
+      )[1],
+    ).toMatchObject({ type: 'part', part: download });
+    for (const unsafe of [
+      { ...download, href: 'https://example.com/CV.pdf' },
+      { ...download, href: '/etc/passwd' },
+      { ...download, label: '' },
+    ]) {
+      expect(() =>
+        parseSseEvents(
+          sse([start, { request_id: 'r-1', sequence: 2, type: 'part', part: unsafe }, { ...done, sequence: 3 }]),
+        ),
+      ).toThrow('invalid-provider-output');
+    }
   });
 
   it('rejects malformed frames and event/data type mismatches', () => {

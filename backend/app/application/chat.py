@@ -32,7 +32,13 @@ class SourcePart(BaseModel):
     page: int
 
 
-ValidatedPart = TextPart | SourcePart | InterviewContactFormPart
+class CvDownloadPart(BaseModel):
+    type: Literal["cv_download"] = "cv_download"
+    href: Literal["/downloads/CV_Lucas_Figueroa.pdf"] = "/downloads/CV_Lucas_Figueroa.pdf"
+    label: Literal["Descargar CV de Lucas"] = "Descargar CV de Lucas"
+
+
+ValidatedPart = TextPart | SourcePart | InterviewContactFormPart | CvDownloadPart
 _HTML_TAG = re.compile(r"<[a-zA-Z][^>]*>")
 
 

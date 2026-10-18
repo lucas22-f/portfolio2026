@@ -19,7 +19,12 @@ export type TextPart = {
   grounding: 'general' | 'portfolio';
 };
 export type SourcePart = { type: 'source'; filename: string; page: number };
-export type ChatPart = TextPart | SourcePart | InterviewContactFormPart;
+export type CvDownloadPart = {
+  type: 'cv_download';
+  href: '/downloads/CV_Lucas_Figueroa.pdf';
+  label: 'Descargar CV de Lucas';
+};
+export type ChatPart = TextPart | SourcePart | InterviewContactFormPart | CvDownloadPart;
 
 type EventBase = { request_id: string; sequence: number };
 export type ChatEvent =
@@ -262,6 +267,15 @@ function validatePart(value: unknown): ChatPart {
     return typeof part['page'] === 'number' && Number.isInteger(part['page']) && part['page'] > 0
       ? { type: 'source', filename: text(part['filename']), page: part['page'] }
       : invalid();
+  if (part['type'] === 'cv_download')
+    return part['href'] === '/downloads/CV_Lucas_Figueroa.pdf' &&
+      part['label'] === 'Descargar CV de Lucas'
+      ? {
+          type: 'cv_download',
+          href: '/downloads/CV_Lucas_Figueroa.pdf',
+          label: 'Descargar CV de Lucas',
+        }
+      : invalid('cv-download-validation');
   if (part['type'] === 'interview_contact_form') {
     try {
       return parseInterviewContactFormPart(part);

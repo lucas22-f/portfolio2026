@@ -1,5 +1,5 @@
 {
-  "expected_content_version": "838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c",
+  "expected_content_version": "1ec94e9c6dac515c5d172117d7f4e1c108870984517bd308d24dc7c220581806",
   "normalization_vectors": [
     {
       "input": "  Café\r\n  con\tIA  ",
@@ -88,10 +88,10 @@
       "path": "sources.1",
       "value": {
         "source_id": "unused-source",
-        "file_name": "CV_Lucas_Figueroa7-7.pdf",
-        "source_sha256": "479776732ca2fe9df90a753c3df55c0ac7560ebcbc1fec4a7250e8e451f56045",
-        "source_text_sha256": "bd737e268c17185bf2b74e33e28a7acf801e796dcfa9ade5ead5aca20195791d",
-        "page_count": 2
+        "file_name": "CV_Lucas_Figueroa09-1.pdf",
+        "source_sha256": "1ad0cd41e3f4c6e57cd2938b3b8b53f30671e5f047186e88ea645d55c5091f83",
+        "source_text_sha256": "f76c4c30abbc356df74b631d44387447b8de5c6ed79b36d35891e44406c814ba",
+        "page_count": 1
       },
       "expected_error": "exactly one manifest source"
     }

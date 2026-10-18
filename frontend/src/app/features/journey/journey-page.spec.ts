@@ -67,6 +67,19 @@ describe('JourneyPage', () => {
     expect(page.querySelector('app-chat-page')).toBeNull();
   });
 
+  it('presents client work as freelance without naming the client', () => {
+    const fixture = TestBed.createComponent(JourneyPage);
+    fixture.detectChanges();
+    const experience = fixture.nativeElement.querySelector('#experience') as HTMLElement;
+    const copy = experience.textContent?.toLocaleLowerCase() ?? '';
+
+    expect(copy).toContain('freelance');
+    expect(copy).not.toContain('mercado libre');
+    expect(copy).not.toContain('mercadolibre');
+    expect(copy).not.toContain('meli');
+    expect(copy).not.toContain('fury');
+  });
+
   it('uses Tailwind layout and touch-target utilities for the guided journey contract', () => {
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
