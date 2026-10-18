@@ -258,8 +258,8 @@ def test_metadata_and_chat_negotiate_schema_only_contact_form() -> None:
         },
     )
     events = _events(response)
-    assert [event["type"] for event in events] == ["start", "part", "part", "done"]
-    assert events[2]["part"] == {
+    assert [event["type"] for event in events] == ["start", "part", "done"]
+    assert events[1]["part"] == {
         "type": "interview_contact_form",
         "form_version": "1",
         "submission_version": "1",

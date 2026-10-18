@@ -42,6 +42,30 @@ def test_citations_are_server_owned_and_deduplicated() -> None:
 
 
 @pytest.mark.asyncio
+async def test_contact_intent_returns_only_form_without_invoking_provider() -> None:
+    calls = 0
+
+    async def invoke(*args: object) -> ProviderResult:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("contact-only requests must not invoke the AI")
+
+    result = await run_chat_graph(
+        {
+            "message": "Quiero una entrevista con Lucas.",
+            "invoke_model": invoke,
+            "retriever": _Retriever(),
+            "contact_form_supported": True,
+        }
+    )
+
+    assert calls == 0
+    assert len(result["parts"]) == 1
+    assert result["parts"][0].type == "interview_contact_form"
+    assert result["parts"][0].intent == "interview"
+
+
+@pytest.mark.asyncio
 async def test_initial_candidate_never_streams_before_final_grounding_validation() -> None:
     deltas: list[str] = []
 

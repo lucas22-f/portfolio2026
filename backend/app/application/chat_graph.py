@@ -65,7 +65,21 @@ async def validate_safety(state: ChatGraphState) -> dict[str, object]:
 
 
 def after_safety(state: ChatGraphState) -> str:
-    return "finalize" if state.get("refusal") else "initial_answer"
+    if state.get("refusal"):
+        return "finalize"
+    if state.get("contact_form_supported") and state.get("contact_intent"):
+        return "contact_form"
+    return "initial_answer"
+
+
+async def contact_form(state: ChatGraphState) -> dict[str, object]:
+    intent = state.get("contact_intent")
+    if intent not in {"employment", "interview", "recruiting"}:
+        return {"parts": []}
+    return {
+        "parts": [InterviewContactFormPart(intent=cast(Any, intent))],
+        "usage": {"total_tokens": 0},
+    }
 
 
 async def initial_answer(state: ChatGraphState) -> dict[str, object]:
@@ -240,6 +254,7 @@ def _graph() -> CompiledStateGraph[ChatGraphState, None, ChatGraphState, ChatGra
     )
     for name, node in (
         ("validate_safety", validate_safety),
+        ("contact_form", contact_form),
         ("initial_answer", initial_answer),
         ("retrieve", retrieve),
         ("grounded_answer", grounded_answer),
@@ -252,8 +267,13 @@ def _graph() -> CompiledStateGraph[ChatGraphState, None, ChatGraphState, ChatGra
     graph.add_conditional_edges(
         "validate_safety",
         after_safety,
-        {"initial_answer": "initial_answer", "finalize": "finalize"},
+        {
+            "initial_answer": "initial_answer",
+            "contact_form": "contact_form",
+            "finalize": "finalize",
+        },
     )
+    graph.add_edge("contact_form", "finalize")
     graph.add_conditional_edges(
         "initial_answer",
         after_initial_answer,

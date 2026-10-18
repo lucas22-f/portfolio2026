@@ -77,6 +77,10 @@ _INTENT_PHRASES: tuple[tuple[ContactIntent, tuple[str, ...]], ...] = (
             "comunicarme con lucas",
             "escribirle a lucas",
             "ponerme en contacto con lucas",
+            "cómo puedo contactarlo",
+            "como puedo contactarlo",
+            "cómo puedo contactar",
+            "como puedo contactar",
         ),
     ),
 )
