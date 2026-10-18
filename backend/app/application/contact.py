@@ -60,7 +60,17 @@ _REFUSALS = (
     "not interested",
 )
 _INTENT_PHRASES: tuple[tuple[ContactIntent, tuple[str, ...]], ...] = (
-    ("interview", ("entrevista", "interview")),
+    (
+        "interview",
+        (
+            "entrevista",
+            "interview",
+            "saber su disponibilidad",
+            "conocer su disponibilidad",
+            "consultar su disponibilidad",
+            "check your availability",
+        ),
+    ),
     ("recruiting", ("reclutamiento", "recruiter", "recruiting", "talent acquisition")),
     (
         "employment",

@@ -52,7 +52,7 @@ async def test_contact_intent_returns_only_form_without_invoking_provider() -> N
 
     result = await run_chat_graph(
         {
-            "message": "Quiero una entrevista con Lucas.",
+            "message": "Me gustaría saber su disponibilidad.",
             "invoke_model": invoke,
             "retriever": _Retriever(),
             "contact_form_supported": True,
