@@ -42,12 +42,14 @@ def main() -> None:
     if configured_model != EMBEDDING_MODEL:
         raise ValueError("only text-embedding-3-small is compatible with pgvector(1536)")
 
-    pdf_path = Path(
-        os.getenv(
-            "PDF_RAG_PDF_PATH",
-            str(Path(__file__).resolve().parents[1] / "app" / "docs" / "CV_Lucas_Figueroa_1.pdf"),
-        )
+    default_pdf_path = (
+        Path(__file__).resolve().parents[2]
+        / "frontend"
+        / "public"
+        / "downloads"
+        / "CV_Lucas_Figueroa.pdf"
     )
+    pdf_path = Path(os.getenv("PDF_RAG_PDF_PATH", str(default_pdf_path)))
     source_sha256 = _sha256(pdf_path)
     chunks = extract_pdf_chunks(pdf_path)
     embedder = OpenAIEmbedder(api_key, model=configured_model)
