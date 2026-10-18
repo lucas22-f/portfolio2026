@@ -14,9 +14,9 @@ The user specified: “si el usuario pregunta, quien era el cliente en el chat b
 The user requested: “si el usuario pide el cv o quiero el curriculum de lucas, que genere un boton para descargarlo en el mismo chat, estaria buenisimo.” When a visitor clearly asks for Lucas's CV/resume, the chat shows a clearly labeled, accessible download button using the new authorized PDF. The request does not need an AI-generated answer. Checks: recognized requests emit a validated download action and render the button; unrelated/ambiguous requests do not; the button downloads the PDF asset.
 
 ## Tasks
-- T1 — S1 — inline — done (Journey unit proof unavailable; user directed publication despite the reported timeout) — commit: pending.
-- T2 — S2-S3 — delegated — done — commit: pending (combined coherent feature work-unit).
-- T3 — S1-S3 — inline verification/integration — in_progress — commit: pending.
+- T1 — S1 — inline — blocked (Journey assertion never ran; do not mark complete) — included in commit `a005783`.
+- T2 — S2-S3 — delegated — done — commit `a005783` (backend and chat frontend tests passed).
+- T3 — S1-S3 — inline verification/integration — in_progress — commit `a005783`; publication to `main` pending.
 
 ### Verification commands (T2)
 - From `backend/`: `poetry run pytest tests/test_application_chat.py tests/test_api.py -q`
@@ -39,3 +39,4 @@ The user requested: “si el usuario pide el cv o quiero el curriculum de lucas,
 - T3 verification: backend full suite passed (159 tests); both delegated chat-focused frontend specs passed (27 each); frontend production build passed with the existing initial-bundle budget warning (523.07 kB vs. 500 kB); `git diff --check` passed; public PDF SHA-256 still matches the regenerated CV source.
 - T3 blocker before user direction: the focused Journey UI spec timed out after 30 seconds during Angular's initial build, before assertions ran. Per runtime policy it was not retried.
 - L2 (2026-10-18): “okey subilo todo a main”. This explicitly authorizes publishing the feature to `main` despite the already-reported Journey test timeout; the missing test proof remains disclosed and no rerun is allowed.
+- L3 (2026-10-18): “revisa y actualiza la lista de tareas que sigue, donde sea necesario y si hay que modificar algo es solo eso, no marcar tareas hechas sin haberlas probado, añadir nota con el commit, mantener tareas en progreso/ bloqueadas donde corresponda. Luego resume lo pendiente y cuál sería el siguiente paso.” T1 remains blocked until its Journey UI assertion is verified; T2 is complete on `a005783`; T3 stays in progress until the authorized push completes.
