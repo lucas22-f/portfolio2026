@@ -22,6 +22,7 @@ import {
   ChatEvent,
   ChatState,
   ChatStreamError,
+  ConversationMessage,
   SourcePart,
   createChatState,
   applyChatEvent,
@@ -754,6 +755,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
         { message: this.activeMessage, state: this.state() },
       ]);
     }
+    const history = this.conversationHistory();
     this.activeMessage = this.lastMessage;
     this.message = '';
     this.stickToBottom = true;
@@ -773,6 +775,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
           this.scrollTranscriptToBottom();
         },
         controller.signal,
+        history,
       );
     } catch (error) {
       if (controller.signal.aborted || this.activeRequest !== controller || this.destroyed) return;
@@ -975,6 +978,21 @@ export class ChatPage implements AfterViewInit, OnDestroy {
       return;
     }
     void this.submit();
+  }
+
+  private conversationHistory(): ConversationMessage[] {
+    const messages: ConversationMessage[] = [];
+    for (const turn of this.completedTurns()) {
+      if (turn.state.status !== 'complete') continue;
+      const assistantText = turn.state.parts
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join('\n');
+      if (!assistantText) continue;
+      messages.push({ role: 'user', content: turn.message.slice(0, 500) });
+      messages.push({ role: 'assistant', content: assistantText.slice(0, 4000) });
+    }
+    return messages.slice(-12);
   }
 
   retry(): Promise<void> {

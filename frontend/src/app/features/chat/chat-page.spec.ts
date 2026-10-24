@@ -410,7 +410,7 @@ describe('ChatPage', () => {
     let call = 0;
     const client = {
       checkCompatibility: async () => 'compatible',
-      stream: async (_message: string, onEvent: (event: ChatEvent) => void) => {
+      stream: vi.fn(async (_message: string, onEvent: (event: ChatEvent) => void) => {
         call += 1;
         const requestId = `r-${call}`;
         const response = call === 1 ? 'Primera respuesta.' : 'Segunda respuesta.';
@@ -434,7 +434,7 @@ describe('ChatPage', () => {
           protocol_version: '5',
           content_version: 'v1',
         });
-      },
+      }),
     };
     await TestBed.configureTestingModule({
       imports: [ChatPage],
@@ -461,6 +461,112 @@ describe('ChatPage', () => {
     );
     expect(transcript.match(/Primera consulta\./g)).toHaveLength(1);
     expect(transcript.match(/Segunda consulta\./g)).toHaveLength(1);
+    expect(client.stream).toHaveBeenLastCalledWith(
+      'Segunda consulta.',
+      expect.any(Function),
+      expect.any(AbortSignal),
+      [
+        { role: 'user', content: 'Primera consulta.' },
+        { role: 'assistant', content: 'Primera respuesta.' },
+      ],
+    );
+  });
+
+  it('preserves the Spanish follow-up context on retry without including previews or metadata', async () => {
+    const calls: Array<{ message: string; history: unknown[] }> = [];
+    let request = 0;
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: vi.fn(async (
+        message: string,
+        onEvent: (event: ChatEvent) => void,
+        _signal: AbortSignal,
+        history: unknown[],
+      ) => {
+        calls.push({ message, history });
+        request += 1;
+        const requestId = `context-${request}`;
+        onEvent({ request_id: requestId, sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        if (request === 1) {
+          onEvent({ request_id: requestId, sequence: 2, type: 'text-delta', text: 'preview not history' });
+          onEvent({ request_id: requestId, sequence: 3, type: 'part', part: { type: 'text', grounding: 'general', text: 'Trabajó en Botmaker.' } });
+          onEvent({ request_id: requestId, sequence: 4, type: 'part', part: { type: 'source', filename: 'private.pdf', page: 7 } });
+          onEvent({ request_id: requestId, sequence: 5, type: 'part', part: { type: 'interview_contact_form', form_version: '1', submission_version: '1', intent: 'interview', fields: ['name', 'email', 'company', 'message'] } });
+          onEvent({ request_id: requestId, sequence: 6, type: 'done', protocol_version: '5', content_version: 'v1' });
+          return;
+        }
+        if (request === 2) {
+          onEvent({ request_id: requestId, sequence: 2, type: 'part', part: { type: 'text', grounding: 'general', text: 'Creó automatizaciones de chatbots para empresas.' } });
+          onEvent({ request_id: requestId, sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+          return;
+        }
+        if (request === 3) {
+          onEvent({ request_id: requestId, sequence: 2, type: 'text-delta', text: 'unvalidated retry preview' });
+          throw new ChatStreamError('stream-closed', true);
+        }
+        onEvent({ request_id: requestId, sequence: 2, type: 'part', part: { type: 'text', grounding: 'general', text: 'Lucas creó automatizaciones.' } });
+        onEvent({ request_id: requestId, sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+      }),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const page = fixture.componentInstance;
+
+    page.message = 'que experiencia Laboral tiene ?';
+    await page.submit();
+    page.message = 'me podes explicar mas facil que fue eso por que no entiendo soy de RRHH';
+    await page.submit();
+    page.message = 'de su experiencia';
+    await page.submit();
+    await page.retry();
+
+    const expectedHistory = [
+      { role: 'user', content: 'que experiencia Laboral tiene ?' },
+      { role: 'assistant', content: 'Trabajó en Botmaker.' },
+      { role: 'user', content: 'me podes explicar mas facil que fue eso por que no entiendo soy de RRHH' },
+      { role: 'assistant', content: 'Creó automatizaciones de chatbots para empresas.' },
+    ];
+    expect(calls[2]).toEqual({ message: 'de su experiencia', history: expectedHistory });
+    expect(calls[3]).toEqual({ message: 'de su experiencia', history: expectedHistory });
+    expect(JSON.stringify(calls[3])).not.toContain('preview');
+    expect(JSON.stringify(calls[3])).not.toContain('private.pdf');
+    expect(JSON.stringify(calls[3])).not.toContain('interview_contact_form');
+    expect(calls[3].history).not.toContainEqual({ role: 'user', content: 'de su experiencia' });
+    fixture.destroy();
+  });
+
+  it('truncates history to the six most recent completed exchanges', async () => {
+    const histories: unknown[][] = [];
+    let request = 0;
+    const client = {
+      checkCompatibility: async () => 'compatible',
+      stream: async (_message: string, onEvent: (event: ChatEvent) => void, _signal: AbortSignal, history: unknown[]) => {
+        histories.push(history);
+        request += 1;
+        const requestId = `bounded-${request}`;
+        onEvent({ request_id: requestId, sequence: 1, type: 'start', protocol_version: '5', content_version: 'v1' });
+        onEvent({ request_id: requestId, sequence: 2, type: 'part', part: { type: 'text', grounding: 'general', text: `Answer ${request}` } });
+        onEvent({ request_id: requestId, sequence: 3, type: 'done', protocol_version: '5', content_version: 'v1' });
+      },
+    };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    for (let index = 0; index < 8; index += 1) {
+      fixture.componentInstance.message = `Question ${index}`;
+      await fixture.componentInstance.submit();
+    }
+    expect(histories[7]).toHaveLength(12);
+    expect(histories[7][0]).toEqual({ role: 'user', content: 'Question 1' });
+    expect(histories[7][11]).toEqual({ role: 'assistant', content: 'Answer 7' });
+    fixture.destroy();
   });
 
   it('derives only safe lifecycle labels from validated chat state', async () => {
@@ -644,6 +750,7 @@ describe('ChatPage', () => {
       'Send this message',
       expect.any(Function),
       expect.any(AbortSignal),
+      [],
     );
   });
 
@@ -813,6 +920,7 @@ describe('ChatPage', () => {
       '¿Qué proyectos puedo explorar?',
       expect.any(Function),
       expect.any(AbortSignal),
+      [],
     );
     fixture.destroy();
   });
@@ -925,6 +1033,7 @@ describe('ChatPage', () => {
       '¿Qué proyectos puedo explorar?',
       expect.any(Function),
       expect.any(AbortSignal),
+      [],
     );
     expect(fixture.componentInstance.state().status).toBe('complete');
     expect(page.querySelector('[data-testid="chat-usage-guide"]')).not.toBeNull();
