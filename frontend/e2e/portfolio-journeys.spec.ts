@@ -1,8 +1,10 @@
 import { expect, Page, test } from '@playwright/test';
 
+import portfolioJson from '../../content/v1/portfolio.json';
+
 import { mockChatApi, sse } from './support/chat-mocks';
 
-const CONTENT_VERSION = '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c';
+const CONTENT_VERSION = portfolioJson.content_version;
 
 async function unlockAssistant(page: Page): Promise<void> {
   await page.goto('/');
