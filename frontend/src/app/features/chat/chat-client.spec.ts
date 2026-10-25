@@ -90,6 +90,31 @@ describe('SSE event parsing', () => {
 });
 
 describe('ChatClient SSE streaming', () => {
+  it('posts ordered conversation context with the current message', async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = async (_url, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return response(sse([start, { ...done, sequence: 2 }]));
+    };
+    try {
+      await new ChatClient().stream('de su experiencia', () => undefined, undefined, [
+        { role: 'user', content: 'que experiencia Laboral tiene ?' },
+        { role: 'assistant', content: 'Trabajó en Botmaker.' },
+        { role: 'user', content: 'me podes explicar mas facil que fue eso por que no entiendo soy de RRHH' },
+        { role: 'assistant', content: 'Desarrolló workflows de chatbots internos.' },
+      ]);
+      expect(requestBody?.['history']).toEqual([
+        { role: 'user', content: 'que experiencia Laboral tiene ?' },
+        { role: 'assistant', content: 'Trabajó en Botmaker.' },
+        { role: 'user', content: 'me podes explicar mas facil que fue eso por que no entiendo soy de RRHH' },
+        { role: 'assistant', content: 'Desarrolló workflows de chatbots internos.' },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('posts chat to the same-origin server proxy', async () => {
     const originalFetch = globalThis.fetch;
     const requestedUrls: string[] = [];

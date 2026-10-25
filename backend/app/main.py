@@ -20,7 +20,7 @@ from typing import Literal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from app.application.chat import (
@@ -46,6 +46,7 @@ from app.application.contact import (
     EphemeralSubmissionGuard,
 )
 from app.domain.content import load_content_bundle
+from app.domain.conversation import validate_history
 from app.infrastructure.chat_provider import (
     ChatProvider,
     OpenAIChatProvider,
@@ -108,6 +109,14 @@ class ChatRequest(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
     )
     capabilities: dict[str, Literal["1"]] | None = None
+    history: list[dict[str, str]] | None = None
+
+    @field_validator("history")
+    @classmethod
+    def validate_conversation_history(
+        cls, value: list[dict[str, str]] | None
+    ) -> list[dict[str, str]] | None:
+        return None if value is None else validate_history(value)
 
 
 def _sse(events: list[dict[str, object]]) -> Iterator[bytes]:
@@ -393,12 +402,22 @@ def create_app(
             known_input_tokens = known_output_tokens = None
             if isinstance(provider, OpenAIChatProvider):
                 call = run_in_threadpool(
-                    provider.generate, message, evidence, tool_call, prior_input_tokens,
-                    prior_output_tokens, on_text_delta,
+                    provider.generate,
+                    message,
+                    evidence,
+                    tool_call,
+                    prior_input_tokens,
+                    prior_output_tokens,
+                    on_text_delta,
+                    history=chat_request.history or (),
                 )
             else:
                 call = run_in_threadpool(
-                    provider.generate, message, evidence, tool_call, prior_input_tokens,
+                    provider.generate,
+                    message,
+                    evidence,
+                    tool_call,
+                    prior_input_tokens,
                     prior_output_tokens,
                 )
             try:
@@ -642,7 +661,9 @@ def create_app(
                     ):
                         settled, warning, over_reservation = await run_in_threadpool(
                             shared_budget.settle,
-                            reservation_id, known_input_tokens, known_output_tokens,
+                            reservation_id,
+                            known_input_tokens,
+                            known_output_tokens,
                             effective_budget.input_cost_per_million,
                             effective_budget.output_cost_per_million,
                         )
