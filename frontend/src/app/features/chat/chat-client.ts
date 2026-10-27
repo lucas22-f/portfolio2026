@@ -46,6 +46,7 @@ export type ChatEvent =
     });
 
 export type ChatUsage = { total_tokens?: number };
+export type ConversationMessage = { role: 'user' | 'assistant'; content: string };
 
 export type ChatStatus = 'idle' | 'streaming' | 'complete' | 'refused' | 'error';
 export type ChatState = {
@@ -377,6 +378,7 @@ export class ChatClient {
     message: string,
     onEvent: (event: ChatEvent) => void,
     signal?: AbortSignal,
+    history: ConversationMessage[] = [],
   ): Promise<void> {
     const clientRequestId = crypto.randomUUID();
     const startedAt = performance.now();
@@ -389,6 +391,7 @@ export class ChatClient {
         body: JSON.stringify({
           message,
           locale: 'es',
+          ...(history.length ? { history } : {}),
           client_request_id: clientRequestId,
           ...(this.contactFormSupported
             ? { capabilities: { interview_contact_form: '1', contact_submission: '1' } }

@@ -73,7 +73,9 @@ async def test_contact_intent_returns_only_form_without_invoking_provider() -> N
         ("Quiero el CV de Lucas", "cv_download"),
     ],
 )
-async def test_direct_identity_and_cv_intents_bypass_provider(message: str, expected_part: str) -> None:
+async def test_direct_identity_and_cv_intents_bypass_provider(
+    message: str, expected_part: str
+) -> None:
     async def invoke(*args: object) -> ProviderResult:
         raise AssertionError("deterministic intents must not invoke the AI")
 

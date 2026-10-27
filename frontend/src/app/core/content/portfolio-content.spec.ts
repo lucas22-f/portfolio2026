@@ -8,9 +8,8 @@ describe('portfolio presentation adapter', () => {
   it('exposes the content version only after validating the checked-in bundle', async () => {
     const bundle = await loadPortfolioPresentation(portfolioJson, manifestJson, sourceJson);
 
-    expect(bundle.contentVersion).toBe(
-      '838caac152b56d2a6c5a99094c05b2385a00dec65693b80d621f2eeebcc3d43c',
-    );
+    expect(bundle.contentVersion).toBe(portfolioJson.content_version);
+    expect(bundle.contentVersion).toBe(manifestJson.content_version);
     expect(bundle.portfolio.locale).toBe('es');
     expect(bundle.portfolio.records).toHaveLength(18);
   });

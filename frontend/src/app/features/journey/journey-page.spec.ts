@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, provideRouter } from '@angular/router';
 import { onScroll } from 'animejs';
+import { of } from 'rxjs';
+
+import { loadPortfolioPresentation } from '../../core/content/portfolio-content';
 import { vi } from 'vitest';
 
 import { ChatPage } from '../chat/chat-page';
@@ -67,7 +70,11 @@ describe('JourneyPage', () => {
     expect(page.querySelector('app-chat-page')).toBeNull();
   });
 
-  it('presents client work as freelance without naming the client', () => {
+  it('presents client work as freelance without naming the client', async () => {
+    const content = await loadPortfolioPresentation();
+    TestBed.overrideProvider(ActivatedRoute, {
+      useValue: { snapshot: { data: { content } }, fragment: of(null) },
+    });
     const fixture = TestBed.createComponent(JourneyPage);
     fixture.detectChanges();
     const experience = fixture.nativeElement.querySelector('#experience') as HTMLElement;

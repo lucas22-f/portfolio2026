@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from threading import Event
 
 import pytest
 from fastapi import Request
@@ -501,7 +502,14 @@ def test_cancelled_stream_retains_reservation() -> None:
             self.retain_calls += 1
             super().retain(reservation_id)
 
-    provider = RecordingProvider(ProviderFailure("provider-timeout", retryable=True))
+    provider_started = Event()
+
+    class StartedProvider(RecordingProvider):
+        def generate(self, *args: object, **kwargs: object) -> ProviderResult:
+            provider_started.set()
+            return super().generate(*args, **kwargs)
+
+    provider = StartedProvider(ProviderFailure("provider-timeout", retryable=True))
     store = TrackingStore()
     app = create_app(
         retriever=FakeRetriever(), provider=provider, service_token="test-token", budget_store=store
@@ -523,8 +531,10 @@ def test_cancelled_stream_retains_reservation() -> None:
         )
         iterator = response.body_iterator
         await iterator.__anext__()
-        await asyncio.sleep(0.02)
-        await iterator.aclose()
+        try:
+            assert await asyncio.to_thread(provider_started.wait, 5), "provider did not start"
+        finally:
+            await iterator.aclose()
 
     asyncio.run(cancel())
     assert store.retain_calls == 1

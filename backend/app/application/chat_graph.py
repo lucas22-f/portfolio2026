@@ -60,9 +60,9 @@ async def _invoke(state: ChatGraphState, *args: object) -> ProviderResult:
 
 def _direct_intent(message: str) -> str | None:
     normalized = message.casefold()
-    if any(term in normalized for term in ("currículum", "curriculum", "resume", "résumé")) or re.search(
-        r"\bcv\b", normalized
-    ):
+    if any(
+        term in normalized for term in ("currículum", "curriculum", "resume", "résumé")
+    ) or re.search(r"\bcv\b", normalized):
         return "cv_download"
     asks_client = any(term in normalized for term in ("cliente", "client"))
     asks_identity = any(
@@ -111,7 +111,10 @@ async def direct_response(state: ChatGraphState) -> dict[str, object]:
                 validate_candidate(
                     {
                         "type": "text",
-                        "text": "El cliente fue Mercado Libre; Lucas trabajó como freelance para un equipo, no como empleado interno.",
+                        "text": (
+                            "El cliente fue Mercado Libre; Lucas trabajó como freelance "
+                            "para un equipo, no como empleado interno."
+                        ),
                         "grounding": "general",
                     }
                 )

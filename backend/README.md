@@ -35,6 +35,8 @@ Run `supabase/migrations/202609200001_pdf_rag_pgvector.sql` manually in the Supa
 
 `content_version` in `/api/v1/metadata` and SSE events remains the reviewed `content/v1` portfolio version. The Angular static portfolio validates that value before enabling chat, so a PDF reseed does not falsely disable an otherwise compatible static UI.
 
+Chat requests may include up to six recent completed user/assistant exchanges as optional `history`. Each user entry is limited to 500 characters and each assistant entry to 4,000; older clients may omit it. Context is sent only for the current stateless provider call, is never treated as portfolio evidence, and is not persisted. The current message is sent separately exactly once.
+
 ## Interview contact delivery
 
 Contact delivery is disabled by default. The browser receives only capability versions; Brevo credentials remain backend-only.
