@@ -111,10 +111,7 @@ async def direct_response(state: ChatGraphState) -> dict[str, object]:
                 validate_candidate(
                     {
                         "type": "text",
-                        "text": (
-                            "El cliente fue Mercado Libre; Lucas trabajó como freelance "
-                            "para un equipo, no como empleado interno."
-                        ),
+                        "text": "Agenda una entrevista con Lucas para más detalles",
                         "grounding": "general",
                     }
                 )

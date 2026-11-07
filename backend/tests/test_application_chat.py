@@ -70,6 +70,8 @@ async def test_contact_intent_returns_only_form_without_invoking_provider() -> N
     ("message", "expected_part"),
     [
         ("¿Quién era el cliente?", "text"),
+        ("¿Quién es el cliente?", "text"),
+        ("¿Quién fue el cliente?", "text"),
         ("Quiero el CV de Lucas", "cv_download"),
     ],
 )
@@ -88,8 +90,7 @@ async def test_direct_identity_and_cv_intents_bypass_provider(
     part = result["parts"][0]
     assert part.type == expected_part
     if expected_part == "text":
-        assert "Mercado Libre" in part.text
-        assert "freelance" in part.text
+        assert part.text == "Agenda una entrevista con Lucas para más detalles"
     else:
         assert part.href == "/downloads/CV_Lucas_Figueroa.pdf"
 
