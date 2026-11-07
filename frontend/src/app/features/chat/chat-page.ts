@@ -183,7 +183,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                     hlmBtn
                     class="min-h-11 w-fit"
                     [href]="part.href"
-                    [attr.download]="'CV_Lucas_Figueroa.pdf'"
+                    [attr.download]="'cv lucas 2026.pdf'"
                     [attr.aria-label]="part.label"
                     data-testid="cv-download"
                   >{{ part.label }}</a>
@@ -378,7 +378,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                       hlmBtn
                       class="min-h-11 w-fit"
                       [href]="part.href"
-                      [attr.download]="'CV_Lucas_Figueroa.pdf'"
+                      [attr.download]="'cv lucas 2026.pdf'"
                       [attr.aria-label]="part.label"
                       data-testid="cv-download"
                     >{{ part.label }}</a>

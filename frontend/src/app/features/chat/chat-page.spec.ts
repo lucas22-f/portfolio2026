@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
-import { ChatClient, ChatEvent, ChatStreamError } from './chat-client';
+import { ChatClient, ChatEvent, ChatStreamError, createChatState } from './chat-client';
 import { ChatPage } from './chat-page';
 
 describe('ChatPage', () => {
@@ -265,7 +265,32 @@ describe('ChatPage', () => {
     );
     expect(button?.textContent).toContain('Descargar CV de Lucas');
     expect(button?.getAttribute('aria-label')).toBe('Descargar CV de Lucas');
-    expect(button?.getAttribute('download')).toBe('CV_Lucas_Figueroa.pdf');
+    expect(button?.getAttribute('download')).toBe('cv lucas 2026.pdf');
+  });
+
+  it('renders the completed-response CV download anchor with the fixed download filename', async () => {
+    const client = { checkCompatibility: async () => 'compatible', stream: async () => undefined };
+    await TestBed.configureTestingModule({
+      imports: [ChatPage],
+      providers: [{ provide: ChatClient, useValue: client }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    fixture.componentInstance.state.set({
+      ...createChatState(),
+      status: 'complete',
+      parts: [
+        { type: 'cv_download', href: '/downloads/CV_Lucas_Figueroa.pdf', label: 'Descargar CV de Lucas' },
+      ],
+    });
+    fixture.detectChanges();
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>(
+      'a[data-testid="cv-download"][href="/downloads/CV_Lucas_Figueroa.pdf"]',
+    );
+    expect(button?.textContent).toContain('Descargar CV de Lucas');
+    expect(button?.getAttribute('aria-label')).toBe('Descargar CV de Lucas');
+    expect(button?.getAttribute('download')).toBe('cv lucas 2026.pdf');
   });
 
   it('reveals streamed text progressively and flushes the validated answer on completion', async () => {
