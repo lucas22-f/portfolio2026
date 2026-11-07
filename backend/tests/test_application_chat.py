@@ -66,6 +66,7 @@ async def test_contact_intent_returns_only_form_without_invoking_provider() -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("contact_form_supported", [False, True])
 @pytest.mark.parametrize(
     ("message", "expected_part"),
     [
@@ -76,17 +77,27 @@ async def test_contact_intent_returns_only_form_without_invoking_provider() -> N
     ],
 )
 async def test_direct_identity_and_cv_intents_bypass_provider(
-    message: str, expected_part: str
+    message: str, expected_part: str, contact_form_supported: bool
 ) -> None:
     async def invoke(*args: object) -> ProviderResult:
         raise AssertionError("deterministic intents must not invoke the AI")
 
     result = await run_chat_graph(
-        {"message": message, "invoke_model": invoke, "retriever": _Retriever()}
+        {
+            "message": message,
+            "invoke_model": invoke,
+            "retriever": _Retriever(),
+            "contact_form_supported": contact_form_supported,
+        }
     )
 
     assert "error" not in result
-    assert len(result["parts"]) == 1
+    expects_form = expected_part == "text" and contact_form_supported
+    assert len(result["parts"]) == (2 if expects_form else 1)
+    if expects_form:
+        assert result["parts"][1].type == "interview_contact_form"
+        assert result["parts"][1].intent == "interview"
+    assert result["usage"] == {"total_tokens": 0}
     part = result["parts"][0]
     assert part.type == expected_part
     if expected_part == "text":

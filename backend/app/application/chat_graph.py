@@ -106,18 +106,18 @@ async def direct_response(state: ChatGraphState) -> dict[str, object]:
     if state.get("direct_intent") == "cv_download":
         return {"parts": [CvDownloadPart()], "usage": {"total_tokens": 0}}
     if state.get("direct_intent") == "client_identity":
-        return {
-            "parts": [
-                validate_candidate(
-                    {
-                        "type": "text",
-                        "text": "Agenda una entrevista con Lucas para más detalles",
-                        "grounding": "general",
-                    }
-                )
-            ],
-            "usage": {"total_tokens": 0},
-        }
+        parts: list[ValidatedPart] = [
+            validate_candidate(
+                {
+                    "type": "text",
+                    "text": "Agenda una entrevista con Lucas para más detalles",
+                    "grounding": "general",
+                }
+            )
+        ]
+        if state.get("contact_form_supported"):
+            parts.append(InterviewContactFormPart(intent="interview"))
+        return {"parts": parts, "usage": {"total_tokens": 0}}
     return {"parts": []}
 
 
