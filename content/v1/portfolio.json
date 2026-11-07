@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "content_version": "1ec94e9c6dac515c5d172117d7f4e1c108870984517bd308d24dc7c220581806",
+  "content_version": "c7e7533f3c8f8f35ec25d034935f90c089b18cec7361e32b3d2c0e11d4c3ef52",
   "locale": "es",
   "records": [
     {
@@ -55,7 +55,7 @@
       "claims": [
         {
           "claim_id": "experience-role",
-          "text": "Conversational AI Engineer freelance en proyectos para una plataforma de e-commerce líder en Latinoamérica (cliente bajo acuerdo de confidencialidad), desde junio de 2025 hasta la actualidad, en modalidad remota desde Buenos Aires, Argentina.",
+          "text": "Conversational AI Engineer freelance en proyectos para un cliente de alto volumen (cliente bajo acuerdo de confidencialidad), desde junio de 2025 hasta la actualidad, en modalidad remota desde Buenos Aires, Argentina.",
           "provenance_id": "cv-page-1"
         },
         {

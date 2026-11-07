@@ -118,7 +118,7 @@ import { mapJourneyRibbonProgress } from './journey-ribbon-progress';
 
               <div hlmCardContent class="grid gap-3">
                 <p class="m-0 text-xs leading-relaxed text-muted-foreground sm:text-base">
-                  Trabajo freelance para una plataforma de e-commerce líder en Latinoamérica, junto a un equipo remoto.
+                  Trabajo freelance para un cliente de alto volumen, junto a un equipo remoto.
                 </p>
                 <div hlmSeparator></div>
                 <ul class="m-0 grid list-none gap-2 p-0 text-xs leading-relaxed text-(--color-text) sm:grid-cols-3 sm:text-sm">

@@ -81,6 +81,9 @@ describe('JourneyPage', () => {
     const copy = experience.textContent?.toLocaleLowerCase() ?? '';
 
     expect(copy).toContain('freelance');
+    expect(copy).toContain('cliente de alto volumen');
+    expect(copy).not.toContain('e-commerce');
+    expect(copy).not.toContain('latinoamérica');
     expect(copy).not.toContain('mercado libre');
     expect(copy).not.toContain('mercadolibre');
     expect(copy).not.toContain('meli');

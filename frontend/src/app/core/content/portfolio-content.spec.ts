@@ -14,6 +14,17 @@ describe('portfolio presentation adapter', () => {
     expect(bundle.portfolio.records).toHaveLength(18);
   });
 
+  it('describes the freelance engagement as a high-volume client without naming the platform', async () => {
+    const bundle = await loadPortfolioPresentation();
+    const roleClaim = bundle.portfolio.records
+      .flatMap((record) => record.claims)
+      .find((claim) => claim.claim_id === 'experience-role');
+
+    expect(roleClaim?.text).toContain('cliente de alto volumen');
+    expect(roleClaim?.text).not.toContain('e-commerce');
+    expect(roleClaim?.text).not.toContain('latinoamérica');
+  });
+
   it('rejects a presentation bundle whose portfolio version was tampered with', async () => {
     const tamperedPortfolio = structuredClone(portfolioJson);
     tamperedPortfolio.content_version = '0'.repeat(64);

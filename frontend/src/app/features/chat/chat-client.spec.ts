@@ -9,7 +9,7 @@ import {
   logChatLifecycle,
 } from './chat-client';
 
-const CONTENT_VERSION = '1ec94e9c6dac515c5d172117d7f4e1c108870984517bd308d24dc7c220581806';
+const CONTENT_VERSION = 'c7e7533f3c8f8f35ec25d034935f90c089b18cec7361e32b3d2c0e11d4c3ef52';
 
 function sse(events: Array<Record<string, unknown>>): string {
   return events
