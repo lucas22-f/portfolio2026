@@ -3,8 +3,72 @@ import { vi } from 'vitest';
 
 import { ChatClient, ChatEvent, ChatStreamError, createChatState } from './chat-client';
 import { ChatPage } from './chat-page';
+import { VoiceInput } from './voice-input';
 
 describe('ChatPage', () => {
+  it('keeps transcribed text editable, preserves concurrent drafts and requires manual send', async () => {
+    const client = { checkCompatibility: async () => 'compatible', stream: vi.fn().mockResolvedValue(undefined) };
+    let result!: (text: string) => void;
+    const start = vi.spyOn(VoiceInput.prototype, 'start').mockImplementation(async function(this: VoiceInput) {
+      // Stub the public capture/network boundary; no real microphone or provider.
+      this.state.set('transcribing');
+    });
+    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const page = fixture.componentInstance;
+    // Exercise the same public completion hook used by VoiceInput.
+    result = (text) => { page.acceptTranscript(text); page.voice.state.set('idle'); };
+    page.message = 'Mi borrador';
+    await page.startVoice();
+    expect(page.canSubmit()).toBe(false);
+    await page.submit();
+    page.selectStarter(page.starterPrompts[0]);
+    expect(page.message).toBe('Mi borrador');
+    expect(client.stream).not.toHaveBeenCalled();
+    result('Nueva consulta');
+    expect(page.message).toBe('Mi borrador Nueva consulta');
+    expect(client.stream).not.toHaveBeenCalled();
+    page.message = 'Consulta corregida';
+    await page.submit();
+    expect(client.stream).toHaveBeenCalledWith('Consulta corregida', expect.any(Function), expect.any(AbortSignal), []);
+    page.state.set(createChatState());
+    page.message = 'Conservar';
+    await page.startVoice();
+    page.message = 'Edición concurrente';
+    result('No reemplazar');
+    expect(page.message).toBe('Edición concurrente');
+    expect(page.voiceNotice()).toContain('cambió');
+    await page.startVoice();
+    result('a'.repeat(501));
+    expect(page.message).toContain('a'.repeat(501));
+    expect(page.canSubmit()).toBe(false);
+    await page.submit();
+    expect(client.stream).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+    start.mockRestore();
+  });
+
+  it('destroys voice capture and preserves ordinary typed manual sending', async () => {
+    const destroy = vi.spyOn(VoiceInput.prototype, 'destroy');
+    const client = { checkCompatibility: async () => 'compatible', stream: vi.fn().mockResolvedValue(undefined) };
+    await TestBed.configureTestingModule({ imports: [ChatPage], providers: [{ provide: ChatClient, useValue: client }] }).compileComponents();
+    const fixture = TestBed.createComponent(ChatPage);
+    await waitForCompatibility(fixture);
+    const textarea = fixture.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+    textarea.value = 'Mensaje escrito';
+    textarea.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(client.stream).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('OpenAI');
+    fixture.nativeElement.querySelector('button[type="submit"]').click();
+    await fixture.whenStable();
+    expect(client.stream).toHaveBeenCalledWith('Mensaje escrito', expect.any(Function), expect.any(AbortSignal), []);
+    fixture.destroy();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    destroy.mockRestore();
+  });
   async function waitForCompatibility(fixture: ComponentFixture<ChatPage>): Promise<void> {
     fixture.detectChanges();
     await fixture.whenStable();

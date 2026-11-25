@@ -28,6 +28,7 @@ import {
   applyChatEvent,
 } from './chat-client';
 import { InterviewContactFormComponent } from './interview-contact-form';
+import { VoiceInput } from './voice-input';
 
 type ChatTurn = { message: string; state: ChatState };
 type StarterPrompt = (typeof STARTER_PROMPTS)[number];
@@ -107,7 +108,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                     type="button"
                     class="chat-side-starter grid min-h-11 w-full gap-1 border-b border-border py-2 text-left"
                     data-testid="chat-side-starter"
-                    [disabled]="state().status === 'streaming' || compatible() !== true"
+                    [disabled]="voice.busy() || state().status === 'streaming' || compatible() !== true"
                     [attr.aria-label]="'Elegir pregunta: ' + starter.prompt"
                     (click)="selectStarter(starter)"
                   >
@@ -224,7 +225,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
               >
                 <p class="m-0">{{ state().announcement }}</p>
                 @if (state().retryable) {
-                  <button hlmBtn class="mt-3 min-h-11" type="button" (click)="retry()">
+                  <button hlmBtn class="mt-3 min-h-11" type="button" [disabled]="voice.busy()" (click)="retry()">
                     Reintentar
                   </button>
                 }
@@ -281,6 +282,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                       type="button"
                       class="chat-starter-card group grid min-h-11 gap-2 rounded-xl border border-border bg-card p-3 text-left shadow-sm"
                       data-testid="chat-starter"
+                      [disabled]="voice.busy()"
                       [style.animation-delay.ms]="index * 55"
                       [attr.aria-label]="'Elegir pregunta: ' + starter.prompt"
                       (click)="selectStarter(starter)"
@@ -445,12 +447,42 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
               class="chat-composer-input min-h-24 w-full resize-none bg-transparent px-1 text-[var(--color-text)] outline-none placeholder:text-muted-foreground"
               placeholder="Escribí tu consulta…"
               [(ngModel)]="message"
+              (ngModelChange)="draftRevision = draftRevision + 1"
               (keydown)="onComposerKeydown($event)"
               [disabled]="state().status === 'streaming' || compatible() !== true"
               [attr.disabled]="compatible() !== true ? '' : null"
               rows="3"
               required
             ></textarea>
+            <p class="m-0 text-xs text-muted-foreground" id="voice-disclosure">
+              Audio de hasta 30 segundos enviado a OpenAI para transcribir. El portfolio no almacena
+              el audio. Revisá el borrador antes de enviarlo.
+            </p>
+            <div class="flex flex-wrap items-center gap-2" aria-describedby="voice-disclosure">
+              @if (!voice.busy()) {
+                <button hlmBtn variant="outline" class="min-h-11" type="button" data-testid="voice-start"
+                  [disabled]="state().status === 'streaming' || compatible() !== true"
+                  (click)="startVoice()">Grabar consulta</button>
+              } @else {
+                @if (voice.state() === 'recording') {
+                  <button hlmBtn variant="outline" class="min-h-11" type="button" (click)="voice.stop()">Detener y transcribir</button>
+                }
+                <button hlmBtn variant="ghost" class="min-h-11" type="button" (click)="cancelVoice()">Cancelar audio</button>
+              }
+              <span class="text-xs text-muted-foreground" role="status">
+                {{ voice.state() === 'permission' ? 'Esperando permiso del micrófono…' :
+                   voice.state() === 'recording' ? 'Grabando (máximo 30 s)…' :
+                   voice.state() === 'transcribing' ? 'Transcribiendo…' : voiceNotice() }}
+              </span>
+            </div>
+            @if (voice.error()) {
+              <p class="m-0 text-sm text-muted-foreground" role="alert">{{ voice.error() }}</p>
+            }
+            @if (message.trim().length > 500) {
+              <p class="m-0 text-sm text-muted-foreground" role="alert">
+                La consulta supera los 500 caracteres. Editá el borrador para enviarlo; no se recorta automáticamente.
+              </p>
+            }
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p class="m-0 text-xs text-muted-foreground" aria-live="polite">
                 {{
@@ -467,6 +499,7 @@ const MAX_TYPEWRITER_FRAME_ELAPSED_MS = 80;
                     class="min-h-11 shrink-0"
                     data-testid="reset-journey"
                     type="button"
+                    [disabled]="voice.busy()"
                     (click)="returnToIntro.emit()"
                   >
                     Volver al inicio
@@ -616,6 +649,11 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   readonly compatibilityPending = signal(true);
   readonly compatibilityRetryAvailable = signal(false);
   message = '';
+  draftRevision = 0;
+  readonly voiceNotice = signal('');
+  readonly voice = new VoiceInput((text) => this.acceptTranscript(text));
+  private voiceDraft = '';
+  private voiceDraftRevision = 0;
   activeMessage = '';
   private lastMessage = '';
   private activeRequest?: AbortController;
@@ -666,6 +704,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.voice.destroy();
     this.activeRequest?.abort();
     this.resetTypewriter();
     if (this.compatibilityRetryTimer !== undefined) {
@@ -742,7 +781,32 @@ export class ChatPage implements AfterViewInit, OnDestroy {
     );
   }
 
+  async startVoice(): Promise<void> {
+    if (this.destroyed || this.voice.busy() || this.state().status === 'streaming' || this.compatible() !== true) return;
+    this.voiceDraft = this.message;
+    this.voiceDraftRevision = this.draftRevision;
+    this.voiceNotice.set('');
+    await this.voice.start();
+  }
+
+  acceptTranscript(text: string): void {
+    if (this.destroyed) return;
+    if (this.message !== this.voiceDraft || this.draftRevision !== this.voiceDraftRevision) {
+      this.voiceNotice.set('El borrador cambió: se conservó tu edición. Podés volver a grabar.');
+      return;
+    }
+    this.message = this.voiceDraft ? `${this.voiceDraft} ${text}` : text;
+    this.selectedStarter.set(undefined);
+    this.voiceNotice.set('Transcripción lista. Revisá el borrador y enviá cuando quieras.');
+  }
+
+  cancelVoice(): void {
+    this.voice.cancel();
+    this.voiceNotice.set('Audio cancelado. Tu borrador se conserva.');
+  }
+
   async submit(retrying = false): Promise<void> {
+    if (this.voice.busy() || this.message.trim().length > 500) return;
     this.activeRequest?.abort();
     const controller = new AbortController();
     this.activeRequest = controller;
@@ -950,6 +1014,8 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   canSubmit(): boolean {
     return (
       Boolean(this.message.trim()) &&
+      this.message.trim().length <= 500 &&
+      !this.voice.busy() &&
       this.state().status !== 'streaming' &&
       this.compatible() === true
     );
@@ -967,7 +1033,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   }
 
   selectStarter(starter: StarterPrompt): void {
-    if (this.state().status === 'streaming') return;
+    if (this.voice.busy() || this.state().status === 'streaming') return;
     this.selectedStarter.set(starter);
     this.message = starter.prompt;
     if (this.compatibilityPending() || this.compatible() !== true) {
@@ -996,6 +1062,7 @@ export class ChatPage implements AfterViewInit, OnDestroy {
   }
 
   retry(): Promise<void> {
+    if (this.voice.busy()) return Promise.resolve();
     this.message = this.lastMessage;
     return this.submit(true);
   }

@@ -55,6 +55,14 @@ from app.infrastructure.chat_provider import (
     ProviderResult,
     ToolCall,
 )
+from app.infrastructure.transcription_provider import (
+    MAX_AUDIO_BYTES,
+    MAX_TRANSCRIPT_CHARACTERS,
+    TRANSCRIPTION_RESERVATION_USD,
+    OpenAITranscriptionProvider,
+    TranscriptionProvider,
+    validate_wav,
+)
 from app.infrastructure.contact_delivery import BrevoContactDelivery, ContactDeliveryFailure
 from app.infrastructure.pdf_rag import (
     OpenAIEmbedder,
@@ -214,6 +222,7 @@ def create_app(
     budget_store: ChatBudgetStore | None = None,
     budget_config: BudgetConfig | None = None,
     retriever_factory: Callable[[], PdfRetriever] | None = None,
+    transcription_provider: TranscriptionProvider | None = None,
 ) -> FastAPI:
     """Create an injectable app; unavailable dependencies surface only via readiness."""
 
@@ -305,6 +314,68 @@ def create_app(
                 "contact_submission": CONTACT_SUBMISSION_VERSION,
             }
         return payload
+
+    @app.post("/api/v1/chat/transcribe", tags=["chat"])
+    async def transcribe_audio(request: Request):  # type: ignore[no-untyped-def]
+        def failure(status: int, code: str = "transcription-unavailable") -> JSONResponse:
+            return JSONResponse(status_code=status, content={"error": code},
+                                headers={"Cache-Control": "no-store"})
+
+        if not service_token:
+            return failure(503)
+        if not hmac.compare_digest(request.headers.get("authorization", "").encode("utf-8"),
+                                   f"Bearer {service_token}".encode()):
+            return failure(401, "unauthorized")
+        if request.headers.get("content-type", "").lower() != "audio/wav":
+            return failure(415, "invalid-audio")
+        if transcription_provider is None:
+            return failure(503)
+        # Validate before admission/budget so rejected input changes neither counter.
+        # The timeout bounds slow uploads; streaming bounds memory even without length.
+        audio = bytearray()
+        try:
+            async with asyncio.timeout(10):
+                async for chunk in request.stream():
+                    if len(audio) + len(chunk) > MAX_AUDIO_BYTES:
+                        return failure(413, "invalid-audio")
+                    audio.extend(chunk)
+            validate_wav(bytes(audio))
+        except (ValueError, TimeoutError):
+            return failure(400, "invalid-audio")
+        admission = admission_guard.try_admit(request.client.host if request.client else None)
+        if not admission.accepted or admission.lease is None:
+            return failure(429, "throttled")
+        reservation_id = str(uuid.uuid4())
+        reserved = False
+        attempted = False
+        try:
+            try:
+                decision = await run_in_threadpool(shared_budget.reserve, reservation_id,
+                                                  datetime.now(UTC), TRANSCRIPTION_RESERVATION_USD)
+            except Exception:
+                return failure(503)
+            if decision is not BudgetDecision.ACCEPTED:
+                return failure(429, "budget-exceeded")
+            reserved = True
+            # Do not retry or release an uncertain paid request. The adapter has a
+            # finite network timeout; threadpool waits preserve the admission lease.
+            attempted = True
+            text = await run_in_threadpool(transcription_provider.transcribe, bytes(audio))
+            if not isinstance(text, str) or not text.strip() or len(text) > MAX_TRANSCRIPT_CHARACTERS:
+                return failure(502)
+            return JSONResponse(content={"text": text}, headers={"Cache-Control": "no-store"})
+        except Exception:
+            return failure(502)
+        finally:
+            try:
+                if reserved:
+                    operation = shared_budget.retain if attempted else shared_budget.release
+                    await run_in_threadpool(operation, reservation_id)
+            except Exception:
+                # A failed retention leaves the reservation open, never released.
+                _chat_log("transcription.accounting_outcome_unknown")
+            finally:
+                admission_guard.release(admission.lease)
 
     @app.post("/api/v1/chat/stream", tags=["chat"])
     async def stream_chat(chat_request: ChatRequest, request: Request):  # type: ignore[no-untyped-def]
@@ -901,6 +972,7 @@ def _default_app(*, debug: bool = False) -> FastAPI:
         budget_store=budget_store,
         budget_config=budget_config,
         retriever_factory=recover_retriever,
+        transcription_provider=OpenAITranscriptionProvider(api_key),
     )
 
 
