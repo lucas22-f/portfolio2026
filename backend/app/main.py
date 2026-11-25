@@ -55,14 +55,6 @@ from app.infrastructure.chat_provider import (
     ProviderResult,
     ToolCall,
 )
-from app.infrastructure.transcription_provider import (
-    MAX_AUDIO_BYTES,
-    MAX_TRANSCRIPT_CHARACTERS,
-    TRANSCRIPTION_RESERVATION_USD,
-    OpenAITranscriptionProvider,
-    TranscriptionProvider,
-    validate_wav,
-)
 from app.infrastructure.contact_delivery import BrevoContactDelivery, ContactDeliveryFailure
 from app.infrastructure.pdf_rag import (
     OpenAIEmbedder,
@@ -70,6 +62,14 @@ from app.infrastructure.pdf_rag import (
     PdfRetrievalTransientError,
     PdfRetriever,
     SupabasePdfRetriever,
+)
+from app.infrastructure.transcription_provider import (
+    MAX_AUDIO_BYTES,
+    MAX_TRANSCRIPT_CHARACTERS,
+    TRANSCRIPTION_RESERVATION_USD,
+    OpenAITranscriptionProvider,
+    TranscriptionProvider,
+    validate_wav,
 )
 
 APP_VERSION = "0.1.0"
@@ -361,7 +361,11 @@ def create_app(
             # finite network timeout; threadpool waits preserve the admission lease.
             attempted = True
             text = await run_in_threadpool(transcription_provider.transcribe, bytes(audio))
-            if not isinstance(text, str) or not text.strip() or len(text) > MAX_TRANSCRIPT_CHARACTERS:
+            if (
+                not isinstance(text, str)
+                or not text.strip()
+                or len(text) > MAX_TRANSCRIPT_CHARACTERS
+            ):
                 return failure(502)
             return JSONResponse(content={"text": text}, headers={"Cache-Control": "no-store"})
         except Exception:

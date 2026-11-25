@@ -8,9 +8,9 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
+import app.infrastructure.transcription_provider as transcription
 from app.application.chat_admission import ChatAdmissionConfig, ChatAdmissionGuard
 from app.application.chat_budget import BudgetDecision, InMemoryChatBudgetStore
-import app.infrastructure.transcription_provider as transcription
 from app.infrastructure.transcription_provider import TRANSCRIPTION_RESERVATION_USD
 from app.main import create_app
 
@@ -32,13 +32,18 @@ def setup(cap=Decimal("5"), outcome="Texto editable"):
         provider.transcribe.side_effect = outcome
     else:
         provider.transcribe.return_value = outcome
-    app = create_app(service_token="fake-test-token", budget_store=store, transcription_provider=provider)
+    app = create_app(
+        service_token="fake-test-token", budget_store=store, transcription_provider=provider
+    )
     return TestClient(app), store, provider
 
 
 def post(client, audio, **kwargs):
-    return client.post("/api/v1/chat/transcribe", content=audio,
-                       headers={"Authorization": "Bearer fake-test-token", "Content-Type": "audio/wav"}, **kwargs)
+    return client.post(
+        "/api/v1/chat/transcribe", content=audio,
+        headers={"Authorization": "Bearer fake-test-token", "Content-Type": "audio/wav"},
+        **kwargs,
+    )
 
 
 @pytest.mark.parametrize("audio", [b"invalid", wav()[:-1], wav(31), wav(channels=2),
@@ -55,8 +60,11 @@ def test_invalid_audio_has_no_provider_or_budget_effect(audio):
 
 def test_auth_and_type_fail_without_charging():
     client, store, provider = setup()
-    for headers, expected in [({}, 401), ({"Authorization": "Bearer wrong"}, 401),
-                              ({"Authorization": "Bearer fake-test-token", "Content-Type": "application/json"}, 415)]:
+    for headers, expected in [
+        ({}, 401),
+        ({"Authorization": "Bearer wrong"}, 401),
+        ({"Authorization": "Bearer fake-test-token", "Content-Type": "application/json"}, 415),
+    ]:
         result = client.post("/api/v1/chat/transcribe", content=wav(), headers=headers)
         assert result.status_code == expected
     provider.transcribe.assert_not_called()
@@ -70,8 +78,12 @@ def test_transcript_is_returned_not_sent_and_full_reservation_is_retained():
     assert result.json() == {"text": "a" * 600}
     provider.transcribe.assert_called_once()
     assert store.retained_count == 1
-    assert store.reserve("probe", datetime.now(UTC), Decimal("5") - TRANSCRIPTION_RESERVATION_USD) is BudgetDecision.ACCEPTED
-    assert store.reserve("over", datetime.now(UTC), Decimal("0.00000001")) is BudgetDecision.CAP_REACHED
+    assert store.reserve(
+        "probe", datetime.now(UTC), Decimal("5") - TRANSCRIPTION_RESERVATION_USD
+    ) is BudgetDecision.ACCEPTED
+    assert store.reserve(
+        "over", datetime.now(UTC), Decimal("0.00000001")
+    ) is BudgetDecision.CAP_REACHED
 
 
 def test_budget_denial_prevents_provider_call():
@@ -114,7 +126,9 @@ def test_invalid_audio_does_not_consume_admission_and_valid_audio_shares_rate_li
 
 def test_unavailable_ledger_prevents_paid_call():
     provider = Mock()
-    client = TestClient(create_app(service_token="fake-test-token", transcription_provider=provider))
+    client = TestClient(create_app(
+        service_token="fake-test-token", transcription_provider=provider
+    ))
     assert post(client, wav()).status_code == 503
     provider.transcribe.assert_not_called()
 

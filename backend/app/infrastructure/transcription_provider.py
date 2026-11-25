@@ -76,7 +76,8 @@ class OpenAITranscriptionProvider:
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
             f"{TRANSCRIPTION_MODEL}\r\n"
             f"--{boundary}\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\nes\r\n"
-            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n"
+            f"--{boundary}\r\nContent-Disposition: form-data; "
+            'name="file"; filename="audio.wav"\r\n'
             "Content-Type: audio/wav\r\n\r\n"
         ).encode()
         body = prefix + audio + f"\r\n--{boundary}--\r\n".encode()
@@ -92,7 +93,11 @@ class OpenAITranscriptionProvider:
                     raise ValueError("oversized response")
                 payload = json.loads(raw)
                 text = payload.get("text")
-                if not isinstance(text, str) or not text.strip() or len(text) > MAX_TRANSCRIPT_CHARACTERS:
+                if (
+                    not isinstance(text, str)
+                    or not text.strip()
+                    or len(text) > MAX_TRANSCRIPT_CHARACTERS
+                ):
                     raise ValueError("invalid response")
                 return text
         except Exception:
