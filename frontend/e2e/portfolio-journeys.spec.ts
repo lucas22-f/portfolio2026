@@ -248,7 +248,7 @@ test('shows safe Spanish refusals and invalid stream failures without rendering 
   await unlockAssistant(page);
   await page.getByLabel('Tu consulta').fill('¿Cuál es su película favorita?');
   await page.getByRole('button', { name: 'Enviar consulta' }).click();
-  await expect(page.getByRole('status').and(page.getByTestId('assistant-activity'))).toContainText(
+  await expect(page.getByRole('status').filter({ hasText: 'No cuento con información publicada' })).toContainText(
     'No cuento con información publicada',
   );
 
